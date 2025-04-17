@@ -1,0 +1,12 @@
+{
+  "timestamp": "2025-04-17T06:17:53.880Z",
+  "network": "localhost",
+  "contracts": {
+    "zkare": {
+      "address": "0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e"
+    },
+    "groth16Verifier": {
+      "address": "0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0"
+    }
+  }
+}
