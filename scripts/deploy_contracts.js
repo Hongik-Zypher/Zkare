@@ -72,8 +72,12 @@ async function main() {
   // MedicalDataVerifier 배포
   if (contractsToDeployIncludes(["all", "medical", "dataverifier"])) {
     const zkareAddress = deploymentInfo.contracts.zkare.address;
+    const groth16VerifierAddress = deploymentInfo.contracts.groth16Verifier.address;
     const MedicalDataVerifier = await hre.ethers.getContractFactory("MedicalDataVerifier");
-    const medicalDataVerifier = await MedicalDataVerifier.deploy(zkareAddress);
+    const medicalDataVerifier = await MedicalDataVerifier.deploy(
+      zkareAddress, 
+      groth16VerifierAddress
+    );
     await medicalDataVerifier.waitForDeployment();
     const medicalDataVerifierAddress = await medicalDataVerifier.getAddress();
     console.log(`✅ MedicalDataVerifier 컨트랙트 배포됨: ${medicalDataVerifierAddress}`);
@@ -106,7 +110,10 @@ async function main() {
     const groth16VerifierAddress = deploymentInfo.contracts.groth16Verifier.address;
     
     const MedicalRecordVerifier = await hre.ethers.getContractFactory("MedicalRecordVerifier");
-    const medicalRecordVerifier = await MedicalRecordVerifier.deploy(zkareAddress, groth16VerifierAddress);
+    const medicalRecordVerifier = await MedicalRecordVerifier.deploy(
+      zkareAddress, 
+      groth16VerifierAddress
+    );
     await medicalRecordVerifier.waitForDeployment();
     const medicalRecordVerifierAddress = await medicalRecordVerifier.getAddress();
     console.log(`✅ MedicalRecordVerifier 컨트랙트 배포됨: ${medicalRecordVerifierAddress}`);
