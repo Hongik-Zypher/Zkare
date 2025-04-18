@@ -32,7 +32,6 @@ import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import PersonIcon from '@mui/icons-material/Person';
 import MedicalInformationIcon from '@mui/icons-material/MedicalInformation';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import RefreshIcon from '@mui/icons-material/Refresh';
 import { 
   initVerificationService, 
   getCurrentAccount,
@@ -42,6 +41,21 @@ import {
   getDoctorsList,
   getPatientsList
 } from '../utils/medicalVerificationService';
+
+// 혈액형 코드와 이름 매핑
+const BLOOD_TYPES = [
+  { code: 0, name: '미등록' },
+  { code: 1, name: 'A형' },
+  { code: 2, name: 'B형' },
+  { code: 3, name: 'AB형' },
+  { code: 4, name: 'O형' }
+];
+
+// 혈액형 코드로 이름 가져오기
+const getBloodTypeName = (code) => {
+  const bloodType = BLOOD_TYPES.find(bt => bt.code === code);
+  return bloodType ? bloodType.name : '미등록';
+};
 
 const Home = () => {
   const navigate = useNavigate();
@@ -148,17 +162,6 @@ const Home = () => {
     setAlertOpen(false);
   };
 
-  // 혈액형 코드를 사람이 읽을 수 있는 형태로 변환
-  const getBloodTypeName = (bloodTypeCode) => {
-    switch (Number(bloodTypeCode)) {
-      case 1: return 'A형';
-      case 2: return 'B형';
-      case 3: return 'O형';
-      case 4: return 'AB형';
-      default: return '알 수 없음';
-    }
-  };
-
   // 의사 목록 로드 함수
   const loadDoctorsList = async () => {
     setLoadingDoctors(true);
@@ -174,7 +177,7 @@ const Home = () => {
     } catch (error) {
       console.error('의사 목록 로드 오류:', error);
       setDoctors([]);
-      showAlert('의사 목록을 가져오는 중 오류가 발생했습니다: ' + (error.message || '알 수 없는 오류'), 'error');
+      showAlert('의사 목록을 가져오는 중 오류가 발생했습니다', 'error');
     } finally {
       setLoadingDoctors(false);
     }
@@ -195,7 +198,7 @@ const Home = () => {
     } catch (error) {
       console.error('환자 목록 로드 오류:', error);
       setPatients([]);
-      showAlert('환자 목록을 가져오는 중 오류가 발생했습니다: ' + (error.message || '알 수 없는 오류'), 'error');
+      showAlert('환자 목록을 가져오는 중 오류가 발생했습니다', 'error');
     } finally {
       setLoadingPatients(false);
     }
@@ -370,7 +373,7 @@ const Home = () => {
                       {doctors.map((doctor, index) => (
                         <ListItem key={index} divider={index < doctors.length - 1}>
                           <ListItemText 
-                            primary={`${doctor.address.substring(0, 8)}...${doctor.address.substring(doctor.address.length - 6)}`}
+                            primary={`${doctor.address.substring(0, 8)}...${doctor.address.substring(36)}`}
                             secondary={doctor.isActive ? '활성 상태' : '비활성 상태'}
                           />
                           <Chip 
@@ -388,9 +391,8 @@ const Home = () => {
                     size="small" 
                     onClick={loadDoctorsList} 
                     disabled={loadingDoctors}
-                    startIcon={loadingDoctors ? <CircularProgress size={16} /> : <RefreshIcon />}
                   >
-                    {loadingDoctors ? '로딩 중...' : '새로 고침'}
+                    {loadingDoctors ? <CircularProgress size={20} /> : '새로 고침'}
                   </Button>
                 </Box>
               </AccordionDetails>
@@ -417,17 +419,12 @@ const Home = () => {
                       {patients.map((patient, index) => (
                         <ListItem key={index} divider={index < patients.length - 1}>
                           <ListItemText 
-                            primary={`${patient.address.substring(0, 8)}...${patient.address.substring(patient.address.length - 6)}`}
+                            primary={`${patient.address.substring(0, 8)}...${patient.address.substring(36)}`}
                             secondary={
                               <>
-                                <Typography component="span" variant="body2" display="block">
-                                  저장된 기록: {patient.recordCount || 0}개
-                                </Typography>
-                                {patient.bloodType > 0 && (
-                                  <Typography component="span" variant="body2" display="block" sx={{ color: 'primary.main' }}>
-                                    혈액형: {getBloodTypeName(patient.bloodType)}
-                                  </Typography>
-                                )}
+                                {`저장된 기록: ${patient.recordCount || 0}개`}
+                                <br />
+                                {`혈액형: ${getBloodTypeName(patient.bloodType)}`}
                               </>
                             }
                           />
@@ -441,9 +438,8 @@ const Home = () => {
                     size="small" 
                     onClick={loadPatientsList} 
                     disabled={loadingPatients}
-                    startIcon={loadingPatients ? <CircularProgress size={16} /> : <RefreshIcon />}
                   >
-                    {loadingPatients ? '로딩 중...' : '새로 고침'}
+                    {loadingPatients ? <CircularProgress size={20} /> : '새로 고침'}
                   </Button>
                 </Box>
               </AccordionDetails>

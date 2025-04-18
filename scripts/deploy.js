@@ -8,7 +8,7 @@ const args = process.argv.slice(2);
 const deployOnlyVerifier = args.includes("--only-verifier");
 
 async function main() {
-  let zkare, groth16Verifier;
+  let zkare, groth16Verifier, verifier;
   let zkareAddress;
 
   if (deployOnlyVerifier) {
@@ -40,16 +40,17 @@ async function main() {
   const groth16VerifierAddress = groth16Verifier.target;
   console.log(`✅ Groth16Verifier deployed to: ${groth16VerifierAddress}`);
 
-  // Zkare에 Groth16Verifier 설정
-  if (!deployOnlyVerifier) {
-    const setVerifierTx = await zkare.setVerifierContract(groth16VerifierAddress);
-    await setVerifierTx.wait();
-    console.log(`✅ Groth16Verifier가 Zkare 컨트랙트에 설정되었습니다.`);
-  }
+  // MedicalDataVerifier 컨트랙트 배포 (항상 실행)
+  const Verifier = await ethers.getContractFactory("MedicalDataVerifier");
+  verifier = await Verifier.deploy(zkareAddress, groth16VerifierAddress);
+  await verifier.waitForDeployment();
+  const verifierAddress = verifier.target;
+  console.log(`✅ MedicalDataVerifier deployed to: ${verifierAddress}`);
 
   // .env 파일 업데이트
   const envUpdates = {
-    GROTH16_VERIFIER_ADDRESS: groth16VerifierAddress
+    GROTH16_VERIFIER_ADDRESS: groth16VerifierAddress,
+    CONTRACT_ADDRESS: verifierAddress
   };
   
   // 전체 배포시 모든 주소 업데이트
@@ -62,11 +63,32 @@ async function main() {
   // 프론트엔드를 위한 배포 정보 저장
   saveDeploymentInfo({
     zkare: zkareAddress,
-    groth16Verifier: groth16VerifierAddress
+    groth16Verifier: groth16VerifierAddress,
+    medicalDataVerifier: verifierAddress
   });
   
-  // ABI 파일을 프론트엔드 디렉토리에 복사
-  await copyAbiToFrontend();
+  // ABI 파일 프론트엔드 디렉토리로 복사
+  console.log("\n📄 ABI 파일 복사 시작...");
+  
+  // 항상 복사할 컨트랙트들
+  const contractsToCopy = [
+    { name: "MedicalDataVerifier", source: verifier },
+    { name: "Groth16Verifier", source: groth16Verifier }
+  ];
+  
+  // 전체 배포시에만 Zkare 컨트랙트도 복사
+  if (!deployOnlyVerifier) {
+    contractsToCopy.push({ name: "Zkare", source: zkare });
+  }
+  
+  // 각 컨트랙트의 ABI 파일 복사
+  for (const contract of contractsToCopy) {
+    try {
+      await copyAbiToFrontend(contract.name, contract.source);
+    } catch (error) {
+      console.error(`❌ ${contract.name} ABI 복사 실패:`, error.message);
+    }
+  }
   
   console.log("\n✅ 배포 완료!");
   console.log("📝 배포 결과:");
@@ -74,6 +96,7 @@ async function main() {
     console.log(`- Zkare: ${zkareAddress}`);
   }
   console.log(`- Groth16Verifier: ${groth16VerifierAddress}`);
+  console.log(`- MedicalDataVerifier: ${verifierAddress}`);
 }
 
 function updateEnv(newEnv) {
@@ -115,7 +138,8 @@ function saveDeploymentInfo(contracts) {
     network: process.env.HARDHAT_NETWORK || 'localhost',
     contracts: {
       zkare: { address: contracts.zkare },
-      groth16Verifier: { address: contracts.groth16Verifier }
+      groth16Verifier: { address: contracts.groth16Verifier },
+      medicalDataVerifier: { address: contracts.medicalDataVerifier }
     }
   };
   
@@ -124,50 +148,39 @@ function saveDeploymentInfo(contracts) {
 }
 
 /**
- * 컴파일된 ABI 파일을 프론트엔드 디렉토리로 복사
+ * 컨트랙트 ABI 파일을 프론트엔드 디렉토리로 복사
+ * @param {string} contractName 컨트랙트 이름
+ * @param {Object} contractInstance 배포된 컨트랙트 인스턴스
  */
-async function copyAbiToFrontend() {
-  console.log("📂 ABI 파일을 프론트엔드로 복사 중...");
-  
+async function copyAbiToFrontend(contractName, contractInstance) {
+  // ABI 파일 경로
   const artifactsDir = path.resolve(__dirname, '../artifacts/contracts');
-  const frontendAbiDir = path.resolve(__dirname, '../frontend/src/abis');
+  const frontendAbisDir = path.resolve(__dirname, '../frontend/src/abis');
   
   // 프론트엔드 ABI 디렉토리가 없으면 생성
-  if (!fs.existsSync(frontendAbiDir)) {
-    fs.mkdirSync(frontendAbiDir, { recursive: true });
+  if (!fs.existsSync(frontendAbisDir)) {
+    fs.mkdirSync(frontendAbisDir, { recursive: true });
   }
   
-  // 복사할 컨트랙트 리스트
-  const contractsToCopy = [
-    { name: 'Zkare.sol/Zkare.json', destDir: 'Zkare.sol' },
-    { name: 'Groth16Verifier.sol/Groth16Verifier.json', destDir: 'Groth16Verifier.sol' }
-  ];
+  // 원본 ABI 파일 경로
+  const contractDir = path.join(artifactsDir, `${contractName}.sol`);
+  const abiSourcePath = path.join(contractDir, `${contractName}.json`);
   
-  for (const contract of contractsToCopy) {
-    const srcPath = path.join(artifactsDir, contract.name);
-    const destDir = path.join(frontendAbiDir, contract.destDir);
-    const destFileName = path.basename(contract.name);
-    
-    // 대상 디렉토리가 없으면 생성
-    if (!fs.existsSync(destDir)) {
-      fs.mkdirSync(destDir, { recursive: true });
-    }
-    
-    try {
-      // 파일이 존재하는지 확인
-      if (fs.existsSync(srcPath)) {
-        const artifactContents = fs.readFileSync(srcPath, 'utf8');
-        fs.writeFileSync(path.join(destDir, destFileName), artifactContents);
-        console.log(`✅ ${contract.name} ABI 파일이 복사되었습니다.`);
-      } else {
-        console.warn(`⚠️ ${srcPath} 파일이 존재하지 않습니다.`);
-      }
-    } catch (error) {
-      console.error(`❌ ${contract.name} 복사 중 오류 발생:`, error);
-    }
+  if (!fs.existsSync(abiSourcePath)) {
+    throw new Error(`ABI 파일을 찾을 수 없습니다: ${abiSourcePath}`);
   }
   
-  console.log("✅ 모든 ABI 파일이 프론트엔드 디렉토리에 복사되었습니다.");
+  // 대상 디렉토리 생성
+  const targetDir = path.join(frontendAbisDir, `${contractName}.sol`);
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+  
+  // ABI 파일 복사
+  const targetPath = path.join(targetDir, `${contractName}.json`);
+  fs.copyFileSync(abiSourcePath, targetPath);
+  
+  console.log(`✅ ${contractName} ABI 파일이 프론트엔드 디렉토리로 복사되었습니다.`);
 }
 
 main().catch((error) => {

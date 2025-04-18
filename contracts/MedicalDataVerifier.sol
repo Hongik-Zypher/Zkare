@@ -15,7 +15,7 @@ interface IGroth16Verifier {
 /**
  * @title MedicalDataVerifier
  * @dev 환자 승인 기반 의료 데이터 검증을 위한 컨트랙트
- * 모든 의료 데이터 유형(혈액형, 알레르기, 병력 등)에 대한 검증 담당
+ * 모든 의료 데이터 유형(혈액형, 알레르기, 병력 등)에 대한 검증 통합
  */
 contract MedicalDataVerifier {
     Zkare public zkareContract;
@@ -48,6 +48,8 @@ contract MedicalDataVerifier {
     event VerificationResult(address indexed requester, address indexed patient, string verificationType, bool isValid);
     event PatientDataRegistered(address indexed patient, string dataType);
     event VerifierUpdated(string verificationType, address verifierAddress);
+    
+    // 추가: 혈액형 관련 이벤트 (BloodTypeVerifier에서 통합)
     event BloodTypeRegistered(address indexed patient, uint bloodTypeCode);
     event BloodTypeVerified(address indexed requester, address indexed patient, bool isMatch);
     

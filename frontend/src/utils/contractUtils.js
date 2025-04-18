@@ -4,28 +4,13 @@ import axios from 'axios';
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
 /**
- * 컨트랙트 ABI와 주소를 가져옵니다.
- * @param {string} contractType - 컨트랙트 타입 ('zkare', 'medicalDataVerifier' 등)
+ * 백엔드 API를 통해 컨트랙트 ABI와 주소를 가져옵니다.
  * @returns {Promise<{abi: any, address: string}>} ABI와 컨트랙트 주소
  */
-export const getContractInfo = async (contractType = 'zkare') => {
+export const getContractInfo = async (contractType = 'patient') => {
   try {
-    // 1단계: 단순화된 로컬 ABI 파일 로드 시도
-    try {
-      const abiModule = await import(`../abis/simplified/${getContractNameFromType(contractType)}.json`);
-      if (abiModule?.default) {
-        console.log(`로컬 ABI 파일에서 ${contractType} 컨트랙트 정보 로드됨`);
-        return {
-          abi: abiModule.default.abi,
-          address: abiModule.default.address
-        };
-      }
-    } catch (localError) {
-      console.log(`로컬 ABI 파일을 찾을 수 없음: ${localError.message}`);
-    }
-    
-    // 2단계: 백엔드 API를 통해 컨트랙트 정보 가져오기
-    console.log(`백엔드 API에서 컨트랙트 정보 요청 중... ${API_URL}/proofs/contract/${contractType}`);
+    // 백엔드 API를 통해 컨트랙트 정보 가져오기
+    console.log(`컨트랙트 정보 요청 중... ${API_URL}/proofs/contract/${contractType}`);
     
     const response = await axios.get(`${API_URL}/proofs/contract/${contractType}`);
     
@@ -41,30 +26,11 @@ export const getContractInfo = async (contractType = 'zkare') => {
   } catch (error) {
     console.error('컨트랙트 정보 로딩 오류:', error);
     
-    // 3단계: fallback으로 하드코딩된 ABI와 주소 사용
+    // 백업 방법: fallback으로 하드코딩된 ABI와 주소 사용
     console.log('하드코딩된 컨트랙트 정보 사용 중...');
     return getFallbackContractInfo(contractType);
   }
 };
-
-/**
- * 컨트랙트 타입에서 컨트랙트 이름을 가져옵니다.
- */
-function getContractNameFromType(contractType) {
-  const contractNames = {
-    'zkare': 'Zkare',
-    'patient': 'Zkare',
-    'verifier': 'Groth16Verifier',
-    'medicalData': 'MedicalDataVerifier',
-    'medicalDataVerifier': 'MedicalDataVerifier',
-    'medicalRecord': 'MedicalRecordVerifier',
-    'medicalRecordVerifier': 'MedicalRecordVerifier',
-    'medicalRecordViewer': 'MedicalRecordViewer',
-    'bloodType': 'BloodTypeVerifier'
-  };
-  
-  return contractNames[contractType] || 'Zkare';
-}
 
 /**
  * 백업 방법: 하드코딩된 기본 ABI와 주소를 반환합니다.

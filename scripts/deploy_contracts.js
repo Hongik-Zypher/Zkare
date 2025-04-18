@@ -73,11 +73,9 @@ async function main() {
   if (contractsToDeployIncludes(["all", "medical", "dataverifier"])) {
     const zkareAddress = deploymentInfo.contracts.zkare.address;
     const groth16VerifierAddress = deploymentInfo.contracts.groth16Verifier.address;
+    
     const MedicalDataVerifier = await hre.ethers.getContractFactory("MedicalDataVerifier");
-    const medicalDataVerifier = await MedicalDataVerifier.deploy(
-      zkareAddress, 
-      groth16VerifierAddress
-    );
+    const medicalDataVerifier = await MedicalDataVerifier.deploy(zkareAddress, groth16VerifierAddress);
     await medicalDataVerifier.waitForDeployment();
     const medicalDataVerifierAddress = await medicalDataVerifier.getAddress();
     console.log(`✅ MedicalDataVerifier 컨트랙트 배포됨: ${medicalDataVerifierAddress}`);
@@ -110,10 +108,7 @@ async function main() {
     const groth16VerifierAddress = deploymentInfo.contracts.groth16Verifier.address;
     
     const MedicalRecordVerifier = await hre.ethers.getContractFactory("MedicalRecordVerifier");
-    const medicalRecordVerifier = await MedicalRecordVerifier.deploy(
-      zkareAddress, 
-      groth16VerifierAddress
-    );
+    const medicalRecordVerifier = await MedicalRecordVerifier.deploy(zkareAddress, groth16VerifierAddress);
     await medicalRecordVerifier.waitForDeployment();
     const medicalRecordVerifierAddress = await medicalRecordVerifier.getAddress();
     console.log(`✅ MedicalRecordVerifier 컨트랙트 배포됨: ${medicalRecordVerifierAddress}`);
@@ -160,6 +155,21 @@ async function main() {
   
   // 환경 변수 업데이트
   updateEnvFile(deploymentInfo);
+  
+  // ABI 파일 프론트엔드 디렉토리로 복사
+  console.log("\n📄 컨트랙트 ABI 파일 복사 시작...");
+  
+  // 배포된 컨트랙트 ABI 복사
+  for (const contractKey in deploymentInfo.contracts) {
+    const contract = deploymentInfo.contracts[contractKey];
+    if (!contract.reused) {
+      try {
+        await copyAbiToFrontend(contract.name);
+      } catch (error) {
+        console.error(`❌ ${contract.name} ABI 복사 실패:`, error.message);
+      }
+    }
+  }
   
   // 배포 정보 JSON 파일 저장
   saveDeploymentInfo(deploymentInfo);
@@ -282,74 +292,41 @@ function saveDeploymentInfo(deploymentInfo) {
   console.log(`✅ 배포 정보가 저장되었습니다:`);
   console.log(`   - ${path.join(frontendDeployDir, filename)}`);
   console.log(`   - ${path.join(backendDeployDir, "latest.json")}`);
-  
-  // ABI 파일들 복사
-  copyAbiFiles(deploymentInfo);
 }
 
 /**
- * 컨트랙트 ABI 파일을 프론트엔드와 백엔드 디렉터리로 복사합니다.
+ * 컨트랙트 ABI 파일을 프론트엔드 디렉토리로 복사
+ * @param {string} contractName 컨트랙트 이름
  */
-function copyAbiFiles(deploymentInfo) {
-  console.log('\n📋 컨트랙트 ABI 파일 복사 중...');
+async function copyAbiToFrontend(contractName) {
+  // ABI 파일 경로
+  const artifactsDir = path.resolve(__dirname, '../artifacts/contracts');
+  const frontendAbisDir = path.resolve(__dirname, '../frontend/src/abis');
   
-  // 백엔드용 ABI 디렉토리
-  const backendAbisDir = path.join(__dirname, "../backend/abis");
-  if (!fs.existsSync(backendAbisDir)) {
-    fs.mkdirSync(backendAbisDir, { recursive: true });
+  // 프론트엔드 ABI 디렉토리가 없으면 생성
+  if (!fs.existsSync(frontendAbisDir)) {
+    fs.mkdirSync(frontendAbisDir, { recursive: true });
   }
   
-  // 아티팩트 소스 디렉토리
-  const artifactsDir = path.join(__dirname, "../artifacts/contracts");
+  // 원본 ABI 파일 경로
+  const contractDir = path.join(artifactsDir, `${contractName}.sol`);
+  const abiSourcePath = path.join(contractDir, `${contractName}.json`);
   
-  // 배포된 각 컨트랙트에 대해 ABI 파일 복사
-  Object.entries(deploymentInfo.contracts).forEach(([contractKey, contractInfo]) => {
-    if (!contractInfo.name) return; // 컨트랙트 이름이 없으면 스킵
-    
-    const contractName = contractInfo.name;
-    const contractFile = `${contractName}.sol`;
-    const artifactPath = path.join(artifactsDir, contractFile, `${contractName}.json`);
-    
-    if (fs.existsSync(artifactPath)) {
-      try {
-        // 전체 아티팩트 복사
-        const artifactContent = fs.readFileSync(artifactPath, 'utf8');
-        const artifact = JSON.parse(artifactContent);
-        
-        // 백엔드용 ABI 파일 저장
-        fs.writeFileSync(
-          path.join(backendAbisDir, `${contractName}.json`),
-          artifactContent
-        );
-        
-        // 단순화된 ABI 파일 생성 (주소와 ABI만 포함)
-        const simplifiedAbi = {
-          contractName: contractName,
-          address: contractInfo.address,
-          abi: artifact.abi
-        };
-        
-        // 프론트엔드용 단순화된 ABI 파일 저장
-        const frontendSimplifiedDir = path.join(__dirname, "../frontend/src/abis/simplified");
-        if (!fs.existsSync(frontendSimplifiedDir)) {
-          fs.mkdirSync(frontendSimplifiedDir, { recursive: true });
-        }
-        
-        fs.writeFileSync(
-          path.join(frontendSimplifiedDir, `${contractName}.json`),
-          JSON.stringify(simplifiedAbi, null, 2)
-        );
-        
-        console.log(`✅ ${contractName} ABI 파일이 복사되었습니다.`);
-      } catch (error) {
-        console.error(`❌ ${contractName} ABI 파일 복사 중 오류 발생:`, error);
-      }
-    } else {
-      console.warn(`⚠️ ${artifactPath} 파일을 찾을 수 없습니다.`);
-    }
-  });
+  if (!fs.existsSync(abiSourcePath)) {
+    throw new Error(`ABI 파일을 찾을 수 없습니다: ${abiSourcePath}`);
+  }
   
-  console.log('✅ ABI 파일 복사 완료');
+  // 대상 디렉토리 생성
+  const targetDir = path.join(frontendAbisDir, `${contractName}.sol`);
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+  
+  // ABI 파일 복사
+  const targetPath = path.join(targetDir, `${contractName}.json`);
+  fs.copyFileSync(abiSourcePath, targetPath);
+  
+  console.log(`✅ ${contractName} ABI 파일이 프론트엔드 디렉토리로 복사되었습니다.`);
 }
 
 main()

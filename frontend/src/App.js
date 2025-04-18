@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, createRoutesFromElements } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import Home from './pages/Home';
@@ -20,19 +20,11 @@ const theme = createTheme({
   },
 });
 
-// React Router v7 향후 플래그 사용
-const routerOptions = {
-  future: {
-    v7_startTransition: true,
-    v7_relativeSplatPath: true
-  }
-};
-
 function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router {...routerOptions}>
+      <Router>
         <Navbar />
         <Routes>
           <Route path="/" element={<Home />} />

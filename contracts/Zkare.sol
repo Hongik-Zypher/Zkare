@@ -1,67 +1,56 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import "./MedicalRecordStorage.sol";
-import "./Groth16Verifier.sol";
-
 /**
  * @title Zkare
- * @dev Main contract responsible for medical record management and access control.
- * Provides basic functionality for patient and doctor management, medical record management, etc.
+ * @dev 메인 컨트랙트로, 의료 기록 관리 및 접근 제어를 담당합니다.
+ * MedicalRecordStorage의 기능을 통합하여 환자 의료 기록을 저장 및 관리합니다.
  */
 contract Zkare {
-    // Check if address is a doctor
+    struct MedicalRecord {
+        bytes32 recordHash;       // 진단결과 hash값(SHA-256)
+        string cid;               // 암호화된 진단결과JSON의 CID
+        address patient;          // 환자주소
+        address doctor;           // 의사주소
+        uint256 timestamp;        // 진료일시
+        bool isDeleted;           // 삭제 여부
+    }
+
+    // 환자별 진료기록
+    mapping(address => MedicalRecord[]) public records;
+    
+    // 의사인지 확인
     mapping(address => bool) public doctorStatus;
     
-    // Check if address is a patient
+    // 환자인지 확인
     mapping(address => bool) public patientStatus;
     
-    // Array of doctor addresses
+    // 의사 목록 배열
     address[] public doctors;
     
-    // Array of patient addresses
+    // 환자 목록 배열
     address[] public patients;
     
-    // Admin address
+    // 관리자 주소
     address public admin;
 
-    // Access approval management - patient => requester => approval status
+    // 기록 접근 승인 관리 - 환자 => 요청자 => 승인 여부
     mapping(address => mapping(address => bool)) public accessApprovals;
     
-    // View request structure
+    // 기록 조회 요청 구조체
     struct ViewRequest {
-        address requester;  // Requester address
-        uint256 timestamp;  // Request time
-        bool isPending;     // Pending status
-        bool isApproved;    // Approval status
+        address requester;  // 요청자 주소
+        uint256 timestamp;  // 요청 시간
+        bool isPending;     // 대기 중 여부
+        bool isApproved;    // 승인 여부
     }
     
-    // View requests per patient
+    // 환자별 조회 요청 목록
     mapping(address => ViewRequest[]) public viewRequests;
     
-    // Verification request structure
-    struct VerificationRequest {
-        address requester;       // Requester address
-        string verificationType; // Verification type (e.g., "bloodType")
-        uint256 requestedValue;  // Requested value to verify
-        uint256 timestamp;       // Request time
-        bool isPending;          // Pending status
-        bool isApproved;         // Approval status
-    }
-    
-    // Verification requests per patient
-    mapping(address => VerificationRequest[]) public verificationRequests;
-    
-    // Patient data mapping - patient => dataType => value
-    mapping(address => mapping(string => uint256)) private patientData;
-    
-    // Medical record storage contract
-    MedicalRecordStorage public recordStorage;
-    
-    // Groth16 verifier contract
-    Groth16Verifier public verifierContract;
-    
-    // Event definitions
+    // 이벤트 정의
+    event RecordRegistered(address indexed patient, address indexed doctor, bytes32 recordHash);
+    event RecordDeleted(address indexed patient, address indexed doctor, bytes32 recordHash);
     event ViewRequestCreated(address indexed requester, address indexed patient, uint requestId);
     event ViewRequestApproved(address indexed patient, address indexed requester, bool approved);
     event AccessGranted(address indexed patient, address indexed viewer);
@@ -69,24 +58,20 @@ contract Zkare {
     event DoctorAdded(address indexed doctor);
     event DoctorRemoved(address indexed doctor);
     event PatientRegistered(address indexed patient);
-    event MedicalRecordStorageDeployed(address indexed storageAddress);
-    event VerificationRequested(address indexed requester, address indexed patient, uint requestId, string verificationType);
-    event VerificationResponded(address indexed patient, uint requestId, bool approved);
-    event PatientDataRegistered(address indexed patient, string dataType, uint256 value);
     
-    // Only doctors can call
+    // 의사만 호출 가능
     modifier onlyDoctor() {
         require(doctorStatus[msg.sender], "Only doctor can call this function");
         _;
     }
     
-    // Only admin can call
+    // 관리자만 호출 가능
     modifier onlyAdmin() {
         require(msg.sender == admin, "Only admin can call this function");
         _;
     }
     
-    // Only patient or approved requester can call
+    // 환자 또는 승인된 요청자만 호출 가능
     modifier onlyPatientOrApproved(address patient) {
         require(
             msg.sender == patient || accessApprovals[patient][msg.sender],
@@ -97,41 +82,104 @@ contract Zkare {
 
     constructor() {
         admin = msg.sender;
-        // Register deployer (admin) as a doctor
-        _addDoctor(msg.sender);
-        
-        // Deploy medical record storage contract
-        recordStorage = new MedicalRecordStorage(address(this));
-        emit MedicalRecordStorageDeployed(address(recordStorage));
+        // 배포자(관리자)를 의사로 등록
+        _addDoctor(msg.sender); 
     }
 
     /**
-     * @dev Register medical record (only doctors can call)
-     * @param recordHash Medical record hash value
-     * @param cid Encrypted record CID on IPFS
-     * @param patient Patient address
+     * @dev 의료 기록 등록 함수 (의사만 호출 가능)
+     * @param recordHash 의료 기록 해시값
+     * @param cid IPFS 상의 암호화된 기록 CID
+     * @param patient 환자 주소
      */
     function registerRecord(bytes32 recordHash, string memory cid, address patient) public onlyDoctor {
-        // Automatically register patient if not already registered
+        // 환자가 등록되어 있지 않다면 자동으로 등록
         if (!patientStatus[patient]) {
             _registerPatient(patient);
         }
         
-        // Register record through MedicalRecordStorage contract
-        string[] memory emptyTags = new string[](0);
-        recordStorage.registerRecord(
+        MedicalRecord memory newRecord = MedicalRecord({
+            recordHash: recordHash,
+            cid: cid,
+            patient: patient,
+            doctor: msg.sender,
+            timestamp: block.timestamp,
+            isDeleted: false
+        });
+        
+        records[patient].push(newRecord);
+        emit RecordRegistered(patient, msg.sender, recordHash);
+    }
+
+    /**
+     * @dev 의료 기록 삭제 함수 (의사만 호출 가능)
+     * @param patient 환자 주소
+     * @param recordIndex 삭제할 기록 인덱스
+     */
+    function deleteRecord(address patient, uint recordIndex) public onlyDoctor {
+        require(recordIndex < records[patient].length, "Record does not exist");
+        require(!records[patient][recordIndex].isDeleted, "Record already deleted");
+        
+        // 실제로 삭제하지 않고 삭제 플래그만 설정
+        records[patient][recordIndex].isDeleted = true;
+        
+        emit RecordDeleted(
             patient,
-            "Medical Record", // recordType
-            "Treatment History", // title
-            "Treatment history registered by doctor", // description
-            recordHash, // contentHash using existing hash value
-            emptyTags // empty tags array
+            records[patient][recordIndex].doctor,
+            records[patient][recordIndex].recordHash
         );
     }
 
     /**
-     * @dev Internal function to add doctor
-     * @param doctor Doctor address
+     * @dev 환자 기록 갯수 조회
+     * @param patient 환자 주소
+     * @return 의료 기록 갯수
+     */
+    function getRecordCount(address patient) public view returns (uint) {
+        uint count = 0;
+        for (uint i = 0; i < records[patient].length; i++) {
+            if (!records[patient][i].isDeleted) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * @dev 특정 환자의 의료 기록 조회 (환자 본인 또는 승인된 사람만)
+     * @param patient 환자 주소
+     * @param recordIndex 기록 인덱스
+     * @return recordHash 의료 기록 해시
+     * @return cid IPFS 상의 암호화된 기록 CID
+     * @return doctor 담당 의사 주소
+     * @return timestamp 기록 생성 시간
+     */
+    function getRecord(address patient, uint recordIndex) 
+        public 
+        view 
+        onlyPatientOrApproved(patient) 
+        returns (
+            bytes32 recordHash,
+            string memory cid,
+            address doctor,
+            uint256 timestamp
+        ) 
+    {
+        require(recordIndex < records[patient].length, "Record does not exist");
+        require(!records[patient][recordIndex].isDeleted, "Record has been deleted");
+        
+        MedicalRecord memory record = records[patient][recordIndex];
+        return (
+            record.recordHash,
+            record.cid,
+            record.doctor,
+            record.timestamp
+        );
+    }
+
+    /**
+     * @dev 내부용 의사 추가 함수
+     * @param doctor 의사 주소
      */
     function _addDoctor(address doctor) internal {
         if (!doctorStatus[doctor]) {
@@ -142,28 +190,28 @@ contract Zkare {
     }
 
     /**
-     * @dev Add doctor (only admin can call)
-     * @param doctor Doctor address
+     * @dev 의사 추가 (관리자만 호출 가능)
+     * @param doctor 의사 주소
      */
     function addDoctor(address doctor) public onlyAdmin {
         _addDoctor(doctor);
     }
 
     /**
-     * @dev Remove doctor (only admin can call)
-     * @param doctor Doctor address
+     * @dev 의사 제거 (관리자만 호출 가능)
+     * @param doctor 의사 주소
      */
     function removeDoctor(address doctor) public onlyAdmin {
         require(doctorStatus[doctor], "Address is not a doctor");
         doctorStatus[doctor] = false;
         
-        // Remove from doctor list (only change mapping status, not actual array)
+        // 의사 목록에서 제거 (실제 배열에서 제거하지는 않고 매핑 상태만 변경)
         emit DoctorRemoved(doctor);
     }
 
     /**
-     * @dev Internal function to register patient
-     * @param patient Patient address
+     * @dev 내부용 환자 등록 함수
+     * @param patient 환자 주소
      */
     function _registerPatient(address patient) internal {
         if (!patientStatus[patient]) {
@@ -174,19 +222,19 @@ contract Zkare {
     }
 
     /**
-     * @dev Register patient (anyone can call)
+     * @dev 환자 등록 (누구나 호출 가능)
      */
     function registerPatient() public {
         _registerPatient(msg.sender);
     }
 
     /**
-     * @dev Create view request (anyone can request)
-     * @param patient Patient address
-     * @return requestId Request ID
+     * @dev 조회 요청 생성 (누구나 요청 가능)
+     * @param patient 환자 주소
+     * @return requestId 요청 ID
      */
     function requestAccess(address patient) public returns (uint) {
-        // No need to request if already approved
+        // 이미 승인된 경우 요청 불필요
         if (accessApprovals[patient][msg.sender]) {
             return 0;
         }
@@ -205,9 +253,9 @@ contract Zkare {
     }
 
     /**
-     * @dev Respond to view request (only patient can respond)
-     * @param requestId Request ID
-     * @param approved Approval status
+     * @dev 조회 요청 응답 (환자만 가능)
+     * @param requestId 요청 ID
+     * @param approved 승인 여부
      */
     function respondToRequest(uint requestId, bool approved) public {
         require(requestId < viewRequests[msg.sender].length, "Request ID not found");
@@ -218,7 +266,7 @@ contract Zkare {
         request.isPending = false;
         request.isApproved = approved;
         
-        // Grant access if approved
+        // 승인하는 경우 접근 권한 부여
         if (approved) {
             accessApprovals[msg.sender][request.requester] = true;
             emit AccessGranted(msg.sender, request.requester);
@@ -228,8 +276,8 @@ contract Zkare {
     }
 
     /**
-     * @dev Revoke access (only patient can call)
-     * @param viewer Viewer address to revoke access from
+     * @dev 접근 권한 취소 (환자만 가능)
+     * @param viewer 권한 취소할 조회자 주소
      */
     function revokeAccess(address viewer) public {
         require(accessApprovals[msg.sender][viewer], "Viewer does not have access");
@@ -239,8 +287,65 @@ contract Zkare {
     }
 
     /**
-     * @dev Get pending view requests (only patient can call)
-     * @return Array of pending request IDs
+     * @dev 특정 환자의 모든 기록 조회 (환자 본인 또는 승인된 사람만)
+     * @param patient 환자 주소
+     * @return 활성 상태의 모든 의료 기록 인덱스 배열
+     */
+    function getAllRecords(address patient) 
+        public 
+        view 
+        onlyPatientOrApproved(patient) 
+        returns (uint[] memory) 
+    {
+        uint count = getRecordCount(patient);
+        uint[] memory activeRecordIndices = new uint[](count);
+        
+        uint currentIndex = 0;
+        for (uint i = 0; i < records[patient].length; i++) {
+            if (!records[patient][i].isDeleted) {
+                activeRecordIndices[currentIndex] = i;
+                currentIndex++;
+            }
+        }
+        
+        return activeRecordIndices;
+    }
+
+    /**
+     * @dev 특정 의사의 모든 환자 기록 조회 (의사만 호출 가능)
+     * @param doctor 의사 주소
+     * @param patient 환자 주소
+     * @return 해당 의사가 담당한 환자의 모든 의료 기록 인덱스 배열
+     */
+    function getDoctorPatientRecords(address doctor, address patient) 
+        public 
+        view 
+        onlyDoctor 
+        returns (uint[] memory) 
+    {
+        uint totalCount = 0;
+        for (uint i = 0; i < records[patient].length; i++) {
+            if (records[patient][i].doctor == doctor && !records[patient][i].isDeleted) {
+                totalCount++;
+            }
+        }
+        
+        uint[] memory doctorRecordIndices = new uint[](totalCount);
+        uint currentIndex = 0;
+        
+        for (uint i = 0; i < records[patient].length; i++) {
+            if (records[patient][i].doctor == doctor && !records[patient][i].isDeleted) {
+                doctorRecordIndices[currentIndex] = i;
+                currentIndex++;
+            }
+        }
+        
+        return doctorRecordIndices;
+    }
+
+    /**
+     * @dev 대기 중인 조회 요청 조회 (환자만 가능)
+     * @return 대기 중인 요청 ID 배열
      */
     function getPendingRequests() public view returns (uint[] memory) {
         uint totalCount = 0;
@@ -264,13 +369,13 @@ contract Zkare {
     }
 
     /**
-     * @dev Get specific request details
-     * @param patient Patient address
-     * @param requestId Request ID
-     * @return requester Requester address
-     * @return timestamp Request time
-     * @return isPending Pending status
-     * @return isApproved Approval status
+     * @dev 특정 요청 상세 조회
+     * @param patient 환자 주소
+     * @param requestId 요청 ID
+     * @return requester 요청자 주소
+     * @return timestamp 요청 시간
+     * @return isPending 대기 중 여부
+     * @return isApproved 승인 여부
      */
     function getRequestDetails(address patient, uint requestId) 
         public 
@@ -283,7 +388,7 @@ contract Zkare {
         ) 
     {
         require(requestId < viewRequests[patient].length, "Request ID not found");
-        // Only patient or requester can view details
+        // 환자 본인이거나 요청자만 조회 가능
         require(
             msg.sender == patient || msg.sender == viewRequests[patient][requestId].requester,
             "Not authorized to view request details"
@@ -300,11 +405,11 @@ contract Zkare {
     }
 
     /**
-     * @dev Get all registered doctor addresses
-     * @return Array of active doctor addresses
+     * @dev 등록된 모든 의사 주소 목록 조회
+     * @return 활성 상태인 의사 주소 배열
      */
     function getAllDoctors() public view returns (address[] memory) {
-        // Count active doctors
+        // 활성 상태의 의사 수 계산
         uint activeCount = 0;
         for (uint i = 0; i < doctors.length; i++) {
             if (doctorStatus[doctors[i]]) {
@@ -312,7 +417,7 @@ contract Zkare {
             }
         }
         
-        // Create array with only active doctors
+        // 활성 상태인 의사만 포함하는 배열 생성
         address[] memory activeDoctors = new address[](activeCount);
         uint currentIndex = 0;
         
@@ -327,280 +432,28 @@ contract Zkare {
     }
     
     /**
-     * @dev Get all registered patient addresses
-     * @return Array of patient addresses
+     * @dev 등록된 모든 환자 주소 목록 조회
+     * @return 환자 주소 배열
      */
     function getAllPatients() public view returns (address[] memory) {
         return patients;
     }
     
     /**
-     * @dev Check if address is a doctor
-     * @param doctor Address to check
-     * @return Whether address is a doctor (true/false)
+     * @dev 주소가 의사인지 확인하는 함수
+     * @param doctor 확인할 의사 주소
+     * @return 의사 여부 (true/false)
      */
     function isDoctor(address doctor) public view returns (bool) {
         return doctorStatus[doctor];
     }
     
     /**
-     * @dev Check if address is a patient
-     * @param patient Address to check
-     * @return Whether address is a patient (true/false)
+     * @dev 주소가 환자인지 확인하는 함수
+     * @param patient 확인할 환자 주소
+     * @return 환자 여부 (true/false)
      */
     function isPatient(address patient) public view returns (bool) {
         return patientStatus[patient];
-    }
-    
-    /**
-     * @dev Get patient's medical record count (after permission check)
-     * @param patient Patient address
-     * @return Number of active medical records for patient
-     */
-    function getPatientRecordCount(address patient) public view onlyPatientOrApproved(patient) returns (uint256) {
-        return recordStorage.getPatientRecordCount(patient);
-    }
-    
-    /**
-     * @dev Get patient's medical record count (admin and doctor only)
-     * @param patient Patient address
-     * @return Number of active medical records for patient
-     */
-    function getPatientRecordCountAdmin(address patient) public view returns (uint256) {
-        require(doctorStatus[msg.sender] || msg.sender == admin, "Only doctor or admin can call");
-        return recordStorage.getPatientRecordCount(patient);
-    }
-    
-    /**
-     * @dev Get specific medical record for patient (after permission check)
-     * @param patient Patient address
-     * @param recordId Record ID
-     * @return id Record ID
-     * @return recordType Type of medical record
-     * @return title Record title
-     * @return description Record description
-     * @return timestamp Creation timestamp
-     * @return doctor Doctor's address
-     * @return hospital Hospital address
-     * @return contentHash Content hash
-     * @return metadata Record metadata
-     * @return isActive Active status
-     */
-    function getPatientRecord(address patient, uint256 recordId) 
-        public 
-        view 
-        onlyPatientOrApproved(patient) 
-        returns (
-            uint256 id,
-            string memory recordType,
-            string memory title,
-            string memory description,
-            uint256 timestamp,
-            address doctor,
-            string memory hospital,
-            bytes32 contentHash,
-            string memory metadata,
-            bool isActive
-        ) 
-    {
-        MedicalRecordStorage.MedicalRecord memory record = recordStorage.getPatientRecordById(patient, recordId);
-        return (
-            record.id,
-            record.recordType,
-            record.title,
-            record.description,
-            record.timestamp,
-            record.doctor,
-            addressToString(record.hospital), // Convert address to string
-            record.contentHash,
-            "", // metadata not available in MedicalRecord struct
-            record.isActive
-        );
-    }
-    
-    // Helper function to convert address to string
-    function addressToString(address _addr) internal pure returns (string memory) {
-        bytes32 value = bytes32(uint256(uint160(_addr)));
-        bytes memory alphabet = "0123456789abcdef";
-        bytes memory str = new bytes(42);
-        str[0] = '0';
-        str[1] = 'x';
-        for (uint i = 0; i < 20; i++) {
-            str[2+i*2] = alphabet[uint(uint8(value[i + 12] >> 4))];
-            str[3+i*2] = alphabet[uint(uint8(value[i + 12] & 0x0f))];
-        }
-        return string(str);
-    }
-
-    /**
-     * @dev Update patient's medical record (doctor permission check)
-     * @param patient Patient address
-     * @param recordId Record ID
-     * @param title New title
-     * @param description New description
-     * @param contentHash New content hash
-     * @param metadata New metadata
-     */
-    function updatePatientRecord(
-        address patient,
-        uint256 recordId,
-        string memory title,
-        string memory description,
-        bytes32 contentHash,
-        string memory metadata
-    ) 
-        public 
-        onlyDoctor 
-    {
-        string[] memory emptyTags = new string[](0);
-        recordStorage.updateRecord(
-            patient,
-            recordId,
-            title,
-            description,
-            contentHash,
-            emptyTags
-        );
-    }
-    
-    /**
-     * @dev Get all medical records for patient (after permission check)
-     * @param patient Patient address
-     * @return Array of all active medical record IDs for patient
-     */
-    function getPatientRecords(address patient) 
-        public 
-        view 
-        onlyPatientOrApproved(patient) 
-        returns (uint256[] memory) 
-    {
-        return recordStorage.getPatientRecordIds(patient);
-    }
-
-    /**
-     * @dev Set Groth16 verifier contract address (only admin can call)
-     * @param _verifierContract Verifier contract address
-     */
-    function setVerifierContract(address _verifierContract) public onlyAdmin {
-        verifierContract = Groth16Verifier(_verifierContract);
-    }
-    
-    /**
-     * @dev Request verification (anyone can request)
-     * @param patient Patient address
-     * @param verificationType Type of verification (e.g., "bloodType")
-     * @param requestedValue Value to verify
-     * @return requestId Request ID
-     */
-    function requestVerification(address patient, string calldata verificationType, uint256 requestedValue) public returns (uint) {
-        uint requestId = verificationRequests[patient].length;
-        
-        verificationRequests[patient].push(VerificationRequest({
-            requester: msg.sender,
-            verificationType: verificationType,
-            requestedValue: requestedValue,
-            timestamp: block.timestamp,
-            isPending: true,
-            isApproved: false
-        }));
-        
-        emit VerificationRequested(msg.sender, patient, requestId, verificationType);
-        return requestId;
-    }
-    
-    /**
-     * @dev Respond to verification request (only patient can respond)
-     * @param requestId Request ID
-     * @param approved Approval status
-     */
-    function respondToVerification(uint requestId, bool approved) public {
-        require(requestId < verificationRequests[msg.sender].length, "Request ID not found");
-        VerificationRequest storage request = verificationRequests[msg.sender][requestId];
-        
-        require(request.isPending, "Request already processed");
-        
-        request.isPending = false;
-        request.isApproved = approved;
-        
-        emit VerificationResponded(msg.sender, requestId, approved);
-    }
-    
-    /**
-     * @dev Get count of pending verification requests for patient
-     * @param patient Patient address
-     * @return Count of pending verification requests
-     */
-    function getPendingVerificationCount(address patient) public view returns (uint) {
-        uint count = 0;
-        
-        for (uint i = 0; i < verificationRequests[patient].length; i++) {
-            if (verificationRequests[patient][i].isPending) {
-                count++;
-            }
-        }
-        
-        return count;
-    }
-
-    /**
-     * @dev Register patient data (only doctors can call)
-     * @param patient Patient address
-     * @param dataType Data type (e.g., "bloodType")
-     * @param value Data value
-     */
-    function registerPatientData(address patient, string calldata dataType, uint256 value) public onlyDoctor {
-        // Automatically register patient if not already registered
-        if (!patientStatus[patient]) {
-            _registerPatient(patient);
-        }
-        
-        patientData[patient][dataType] = value;
-        emit PatientDataRegistered(patient, dataType, value);
-    }
-    
-    /**
-     * @dev Get patient data (permission check)
-     * @param patient Patient address
-     * @param dataType Data type (e.g., "bloodType")
-     * @return Data value
-     */
-    function getPatientData(address patient, string calldata dataType) public view onlyPatientOrApproved(patient) returns (uint256) {
-        return patientData[patient][dataType];
-    }
-
-    /**
-     * @dev Get details of specific verification request
-     * @param patient Patient address
-     * @param requestId Request ID
-     * @return requester Requester address
-     * @return verificationType Verification type (e.g., "bloodType")
-     * @return requestedValue Requested value to verify
-     * @return timestamp Request time
-     * @return isPending Pending status
-     * @return isApproved Approval status
-     */
-    function getVerificationRequestDetails(address patient, uint requestId)
-        public
-        view
-        returns (
-            address requester,
-            string memory verificationType,
-            uint256 requestedValue,
-            uint256 timestamp,
-            bool isPending,
-            bool isApproved
-        )
-    {
-        require(requestId < verificationRequests[patient].length, "Request ID not found");
-        VerificationRequest memory request = verificationRequests[patient][requestId];
-        
-        return (
-            request.requester,
-            request.verificationType,
-            request.requestedValue,
-            request.timestamp,
-            request.isPending,
-            request.isApproved
-        );
     }
 }

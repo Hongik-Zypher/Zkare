@@ -1,7 +1,6 @@
 const ZkProofService = require('../services/zkProofService');
 const config = require('../config');
 const path = require('path');
-const { generateBloodTypeZkProof, verifyBloodTypeZkProof } = require('../services/zkProofService');
 
 // 필수 환경 변수 확인
 if (!config.CONTRACT_ADDRESS) {
@@ -400,36 +399,96 @@ exports.getContractABI = async (req, res) => {
 };
 
 /**
- * 혈액형 ZK 증명 생성
- * @param {Object} req - Express 요청 객체
- * @param {Object} req.body - 요청 본문
- * @param {string} req.body.actualBloodTypeCode - 환자의 실제 혈액형 코드
- * @param {string} req.body.targetBloodTypeCode - 검증하려는 대상 혈액형 코드
- * @param {Object} res - Express 응답 객체
+ * 혈액형 ZK 증명 생성 컨트롤러
+ * @param {Object} req - 요청 객체
+ * @param {Object} res - 응답 객체
  */
 exports.generateBloodTypeProof = async (req, res) => {
   try {
-    const { actualBloodTypeCode, targetBloodTypeCode } = req.body;
+    console.log('혈액형 증명 생성 요청 받음:', req.body);
     
-    if (!actualBloodTypeCode || !targetBloodTypeCode) {
+    // ZkProofService 인스턴스 확인
+    if (!zkProofService) {
+      console.error('ZK 증명 서비스가 초기화되지 않았습니다.');
+      return res.status(500).json({ 
+        success: false, 
+        message: 'ZK 증명 서비스가 초기화되지 않았습니다. 서버 로그를 확인하세요.' 
+      });
+    }
+
+    const { patientAddress, actualBloodTypeCode, targetBloodTypeCode } = req.body;
+    
+    // 파라미터 검증
+    if (!patientAddress || actualBloodTypeCode === undefined || targetBloodTypeCode === undefined) {
+      console.error('필수 파라미터가 누락되었습니다:', req.body);
       return res.status(400).json({ 
         success: false, 
-        message: '혈액형 코드가 누락되었습니다.' 
+        message: 'patientAddress, actualBloodTypeCode, targetBloodTypeCode 파라미터가 모두 필요합니다.' 
       });
     }
     
-    console.log(`혈액형 증명 생성 요청: 실제=${actualBloodTypeCode}, 대상=${targetBloodTypeCode}`);
+    // 혈액형 코드 검증 (1-4 범위 내에 있어야 함)
+    if (actualBloodTypeCode < 1 || actualBloodTypeCode > 4 || targetBloodTypeCode < 1 || targetBloodTypeCode > 4) {
+      console.error('혈액형 코드가 유효하지 않습니다:', { actualBloodTypeCode, targetBloodTypeCode });
+      return res.status(400).json({
+        success: false,
+        message: '혈액형 코드는 1(A형), 2(B형), 3(AB형), 4(O형) 중 하나여야 합니다.'
+      });
+    }
+
+    // 환자 주소 검증 (유효한 이더리움 주소 형식)
+    if (!patientAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      console.error('유효하지 않은 환자 주소:', patientAddress);
+      return res.status(400).json({
+        success: false,
+        message: '유효한 이더리움 주소 형식이 아닙니다.'
+      });
+    }
+
+    console.log('혈액형 증명 생성 시작...');
+    console.log('서비스 호출 파라미터:', { patientAddress, actualBloodTypeCode, targetBloodTypeCode });
     
-    const proofData = await generateBloodTypeZkProof(actualBloodTypeCode, targetBloodTypeCode);
-    
-    return res.status(200).json({
-      success: true,
-      message: '혈액형 증명이 성공적으로 생성되었습니다.',
-      data: proofData
-    });
+    try {
+      // 혈액형 증명 생성
+      const proofData = await zkProofService.generateBloodTypeProof(
+        patientAddress,
+        actualBloodTypeCode,
+        targetBloodTypeCode
+      );
+      
+      console.log('혈액형 증명 생성 완료:', { proofExists: !!proofData });
+      
+      // 증명 생성 실패
+      if (!proofData) {
+        return res.status(500).json({
+          success: false,
+          message: '혈액형 증명 생성에 실패했습니다.'
+        });
+      }
+      
+      // 응답 생성
+      res.status(200).json({
+        success: true,
+        message: '혈액형 증명이 성공적으로 생성되었습니다.',
+        proofData: {
+          proof: proofData.proof,
+          publicSignals: proofData.publicSignals,
+          isMatch: proofData.isMatch,
+          actualBloodTypeCode,
+          targetBloodTypeCode
+        }
+      });
+    } catch (innerError) {
+      console.error('서비스 내부 오류:', innerError);
+      return res.status(500).json({
+        success: false,
+        message: '증명 생성 중 내부 오류가 발생했습니다.',
+        error: innerError.message
+      });
+    }
   } catch (error) {
-    console.error('혈액형 증명 생성 오류:', error);
-    return res.status(500).json({
+    console.error('혈액형 증명 생성 컨트롤러 오류:', error);
+    res.status(500).json({
       success: false,
       message: '혈액형 증명 생성 중 오류가 발생했습니다.',
       error: error.message
@@ -438,36 +497,88 @@ exports.generateBloodTypeProof = async (req, res) => {
 };
 
 /**
- * 혈액형 ZK 증명 검증
- * @param {Object} req - Express 요청 객체
- * @param {Object} req.body - 요청 본문
- * @param {Object} req.body.proof - 검증할 증명 데이터
- * @param {Object} res - Express 응답 객체
+ * 혈액형 ZK 증명 검증 컨트롤러
+ * @param {Object} req - 요청 객체
+ * @param {Object} res - 응답 객체
  */
 exports.verifyBloodTypeProof = async (req, res) => {
   try {
-    const { proof } = req.body;
+    console.log('혈액형 증명 검증 요청 받음:', JSON.stringify(req.body, null, 2));
     
-    if (!proof) {
+    // ZkProofService 인스턴스 확인
+    if (!zkProofService) {
+      console.error('ZK 증명 서비스가 초기화되지 않았습니다.');
+      return res.status(500).json({ 
+        success: false, 
+        message: 'ZK 증명 서비스가 초기화되지 않았습니다. 서버 로그를 확인하세요.' 
+      });
+    }
+
+    const { proof, publicSignals } = req.body;
+    
+    // 필수 파라미터 검증
+    if (!proof || !publicSignals) {
+      console.error('필수 파라미터가 누락되었습니다:', req.body);
       return res.status(400).json({ 
         success: false, 
-        message: '증명 데이터가 누락되었습니다.' 
+        message: 'proof와 publicSignals 파라미터가 모두 필요합니다.' 
       });
     }
     
-    console.log('혈액형 증명 검증 요청 수신됨');
+    // proof 형식 검증 - 객체 형태 허용
+    if (typeof proof !== 'object') {
+      console.error('증명 데이터 형식이 잘못되었습니다:', proof);
+      return res.status(400).json({
+        success: false,
+        message: 'proof는 유효한 객체여야 합니다.'
+      });
+    }
     
-    const verificationResult = await verifyBloodTypeZkProof(proof);
+    // publicSignals 형식 검증
+    if (!Array.isArray(publicSignals) || publicSignals.length === 0) {
+      console.error('공개 입력값 형식이 잘못되었습니다:', publicSignals);
+      return res.status(400).json({
+        success: false,
+        message: 'publicSignals는 비어있지 않은 배열이어야 합니다.'
+      });
+    }
+
+    console.log('혈액형 증명 검증 시작...');
     
-    return res.status(200).json({
-      success: true,
-      message: '혈액형 증명 검증이 완료되었습니다.',
-      isValid: verificationResult.isValid,
-      data: verificationResult
-    });
+    try {
+      // 증명 검증
+      const isValid = await zkProofService.verifyBloodTypeProof(proof, publicSignals);
+      console.log('혈액형 증명 검증 결과:', isValid);
+      
+      // 결과 분석
+      let isMatch = false;
+      try {
+        // publicSignals에서 isMatch 값 추출 (0 또는 1)
+        isMatch = publicSignals[0] === '1';
+      } catch (parseError) {
+        console.warn('공개 입력값에서 isMatch를 추출할 수 없습니다:', parseError);
+      }
+      
+      // 응답 생성
+      res.status(200).json({
+        success: true,
+        isValid,
+        isMatch,
+        message: isValid 
+          ? (isMatch ? '증명이 유효하며, 혈액형이 일치합니다.' : '증명이 유효하며, 혈액형이 일치하지 않습니다.') 
+          : '증명이 유효하지 않습니다.'
+      });
+    } catch (innerError) {
+      console.error('검증 서비스 내부 오류:', innerError);
+      return res.status(500).json({
+        success: false,
+        message: '증명 검증 중 내부 오류가 발생했습니다.',
+        error: innerError.message
+      });
+    }
   } catch (error) {
-    console.error('혈액형 증명 검증 오류:', error);
-    return res.status(500).json({
+    console.error('혈액형 증명 검증 컨트롤러 오류:', error);
+    res.status(500).json({
       success: false,
       message: '혈액형 증명 검증 중 오류가 발생했습니다.',
       error: error.message

@@ -1,120 +1,130 @@
 import { ethers } from 'ethers';
 
-// ABI 가져오기
-import zkareAbi from '../abis/Zkare.sol/Zkare.json';
-import groth16VerifierAbi from '../abis/Groth16Verifier.sol/Groth16Verifier.json';
+// ABI 파일 가져오기
+const ZkareABI = require('../abis/Zkare.sol/Zkare.json');
+const MedicalDataVerifierABI = require('../abis/MedicalDataVerifier.sol/MedicalDataVerifier.json');
+const MedicalRecordVerifierABI = require('../abis/MedicalRecordVerifier.sol/MedicalRecordVerifier.json');
+const Groth16VerifierABI = require('../abis/Groth16Verifier.sol/Groth16Verifier.json');
+const MedicalRecordViewerABI = require('../abis/MedicalRecordViewer.sol/MedicalRecordViewer.json');
 
-// 배포 정보 가져오기
-let deploymentInfo;
+// 기본 배포 정보 (선택적으로 import, 파일이 없을 수 있음)
+let latestDeployment = null;
 try {
-  deploymentInfo = require('../deployments/latest.json');
+  latestDeployment = require('../deployments/latest.json');
 } catch (error) {
-  console.warn('배포 정보 파일을 찾을 수 없습니다.');
-  deploymentInfo = { contracts: {} };
+  console.warn('배포 정보 파일을 찾을 수 없습니다. 환경변수를 사용합니다.');
 }
 
-// 컨트랙트 주소 설정
-const ZKARE_ADDRESS = process.env.REACT_APP_ZKARE_CONTRACT_ADDRESS || 
-  (deploymentInfo.contracts?.zkare?.address || '');
-  
-const GROTH16_VERIFIER_ADDRESS = process.env.REACT_APP_GROTH16_VERIFIER_ADDRESS || 
-  (deploymentInfo.contracts?.groth16Verifier?.address || '');
-
-// 컨트랙트 인스턴스
-let zkareContract = null;
-let groth16VerifierContract = null;
-let provider = null;
-let signer = null;
-
 /**
- * 메타마스크 연결 및 컨트랙트 초기화
+ * 컨트랙트 주소를 가져오는 함수
+ * 우선순위: 
+ * 1. 환경변수
+ * 2. 배포 정보 파일
+ * 
+ * @returns 컨트랙트 주소 객체
  */
-export const initializeContracts = async () => {
-  if (window.ethereum) {
-    try {
-      // 사용자 계정 요청
-      await window.ethereum.request({ method: 'eth_requestAccounts' });
-      
-      // 이더리움 프로바이더 및 서명자 설정
-      provider = new ethers.BrowserProvider(window.ethereum);
-      signer = await provider.getSigner();
-      
-      // 컨트랙트 인스턴스 생성
-      zkareContract = new ethers.Contract(ZKARE_ADDRESS, zkareAbi.abi, signer);
-      
-      if (GROTH16_VERIFIER_ADDRESS && GROTH16_VERIFIER_ADDRESS !== '') {
-        groth16VerifierContract = new ethers.Contract(GROTH16_VERIFIER_ADDRESS, groth16VerifierAbi.abi, signer);
-        
-        // Zkare가 검증자 컨트랙트를 직접 사용할 수 있도록 설정
-        try {
-          // 컨트랙트에 검증자가 이미 설정되어 있는지 확인
-          const currentVerifier = await zkareContract.verifierContract();
-          const zeroAddress = '0x0000000000000000000000000000000000000000';
-          
-          // 검증자가 설정되어 있지 않으면 설정
-          if (currentVerifier === zeroAddress) {
-            const tx = await zkareContract.setVerifierContract(GROTH16_VERIFIER_ADDRESS);
-            await tx.wait();
-            console.log('Zkare 컨트랙트에 검증자 설정 완료');
-          }
-        } catch (e) {
-          console.warn('검증자 설정 중 오류 발생:', e);
-        }
-      }
-      
-      console.log('컨트랙트 초기화 완료');
-      return { success: true };
-    } catch (error) {
-      console.error('컨트랙트 초기화 오류:', error);
-      return { success: false, error };
+export function getContractAddresses() {
+  // 환경 변수에서 주소 가져오기 (React에서 환경 변수는 REACT_APP_ 접두사 필요)
+  const fromEnv = {
+    zkare: process.env.REACT_APP_ZKARE_CONTRACT_ADDRESS,
+    medicalDataVerifier: process.env.REACT_APP_MEDICAL_DATA_VERIFIER_ADDRESS,
+    medicalRecordVerifier: process.env.REACT_APP_MEDICAL_RECORD_VERIFIER_ADDRESS,
+    groth16Verifier: process.env.REACT_APP_GROTH16_VERIFIER_ADDRESS,
+    medicalRecordViewer: process.env.REACT_APP_MEDICAL_RECORD_VIEWER_ADDRESS
+  };
+
+  // 배포 정보 파일에서 주소 가져오기
+  const fromDeployment = latestDeployment ? {
+    zkare: latestDeployment.contracts?.zkare?.address,
+    medicalDataVerifier: latestDeployment.contracts?.medicalDataVerifier?.address,
+    medicalRecordVerifier: latestDeployment.contracts?.medicalRecordVerifier?.address,
+    groth16Verifier: latestDeployment.contracts?.groth16Verifier?.address,
+    medicalRecordViewer: latestDeployment.contracts?.medicalRecordViewer?.address
+  } : {};
+
+  // 두 소스를 병합하여 최종 주소 결정
+  const addresses = {
+    zkare: fromEnv.zkare || fromDeployment.zkare,
+    medicalDataVerifier: fromEnv.medicalDataVerifier || fromDeployment.medicalDataVerifier,
+    medicalRecordVerifier: fromEnv.medicalRecordVerifier || fromDeployment.medicalRecordVerifier,
+    groth16Verifier: fromEnv.groth16Verifier || fromDeployment.groth16Verifier,
+    medicalRecordViewer: fromEnv.medicalRecordViewer || fromDeployment.medicalRecordViewer
+  };
+
+  // 주소 확인 및 경고
+  Object.entries(addresses).forEach(([key, value]) => {
+    if (!value) {
+      console.warn(`경고: ${key} 컨트랙트 주소를 찾을 수 없습니다.`);
     }
-  } else {
-    console.error('MetaMask가 설치되어 있지 않습니다');
-    return { success: false, error: new Error('MetaMask가 설치되어 있지 않습니다') };
-  }
-};
+  });
+
+  return addresses;
+}
 
 /**
- * 컨트랙트 인스턴스를 반환합니다
+ * 컨트랙트 인스턴스 생성 함수 (ethers v6)
+ * 
+ * @param {ethers.Provider} provider 이더리움 프로바이더
+ * @param {ethers.Signer} signer (선택사항) 트랜잭션 서명자
+ * @returns 컨트랙트 인스턴스 객체
  */
-export const getContracts = async () => {
-  if (!zkareContract) {
-    await initializeContracts();
-  }
+export async function createContractInstances(provider, signer = null) {
+  const addresses = getContractAddresses();
+  const signerOrProvider = signer || provider;
   
   return {
-    zkareContract,
-    groth16VerifierContract,
-    provider,
-    signer
+    zkare: new ethers.Contract(addresses.zkare, ZkareABI.abi, signerOrProvider),
+    medicalDataVerifier: new ethers.Contract(addresses.medicalDataVerifier, MedicalDataVerifierABI.abi, signerOrProvider),
+    medicalRecordVerifier: new ethers.Contract(addresses.medicalRecordVerifier, MedicalRecordVerifierABI.abi, signerOrProvider),
+    groth16Verifier: new ethers.Contract(addresses.groth16Verifier, Groth16VerifierABI.abi, signerOrProvider),
+    medicalRecordViewer: new ethers.Contract(addresses.medicalRecordViewer, MedicalRecordViewerABI.abi, signerOrProvider)
   };
-};
+}
 
 /**
- * 현재 연결된 계정 주소 가져오기
+ * 메타마스크에 연결하고 컨트랙트 인스턴스 생성
+ * 
+ * @returns {Object} 컨트랙트 인스턴스와 사용자 정보
  */
-export const getCurrentAccount = async () => {
-  if (!provider) {
-    await initializeContracts();
+export async function connectToBlockchain() {
+  if (!window.ethereum) {
+    throw new Error('MetaMask가 설치되어 있지 않습니다.');
   }
-  if (!signer) {
-    throw new Error('MetaMask에 연결되지 않았습니다');
+  
+  try {
+    // 사용자 계정 요청
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    
+    // 이더리움 공급자 및 서명자 설정 (ethers v6)
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    const userAddress = await signer.getAddress();
+    
+    // 컨트랙트 인스턴스 생성
+    const contracts = await createContractInstances(provider, signer);
+    
+    return {
+      provider,
+      signer,
+      userAddress,
+      ...contracts
+    };
+  } catch (error) {
+    console.error('블록체인 연결 오류:', error);
+    throw error;
   }
-  return await signer.getAddress();
-};
+}
 
 /**
- * MetaMask가 설치되어 있는지 확인
+ * 배포 네트워크 정보 가져오기
+ * 
+ * @returns 배포 네트워크 정보
  */
-export const detectMetaMask = () => {
-  return window.ethereum !== undefined;
-};
-
-export default {
-  initializeContracts,
-  getContracts,
-  getCurrentAccount,
-  detectMetaMask,
-  ZKARE_ADDRESS,
-  GROTH16_VERIFIER_ADDRESS
-}; 
+export function getDeploymentInfo() {
+  if (!latestDeployment) return { network: null, timestamp: null };
+  
+  return {
+    network: latestDeployment.network,
+    timestamp: latestDeployment.timestamp
+  };
+} 

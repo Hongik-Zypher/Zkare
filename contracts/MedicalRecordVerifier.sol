@@ -2,206 +2,178 @@
 pragma solidity ^0.8.28;
 
 import "./Zkare.sol";
-import "./MedicalRecordStorage.sol";
+
+interface IGroth16Verifier {
+    function verifyProof(
+        uint[2] memory a,
+        uint[2][2] memory b,
+        uint[2] memory c,
+        uint[] memory input
+    ) external returns (bool);
+}
 
 /**
  * @title MedicalRecordVerifier
- * @dev Contract responsible for verifying patient medical records
- * Provides access control and verification functionality for patient medical records
+ * @dev 의료 기록 접근 및 영지식 증명 검증을 위한 컨트랙트
  */
 contract MedicalRecordVerifier {
     Zkare public zkareContract;
-    MedicalRecordStorage public recordStorage;
+    IGroth16Verifier public verifierContract;
     
-    // Event definitions
-    event AccessRequestCreated(address indexed requester, address indexed patient, uint requestId);
-    event AccessRequestResolved(address indexed patient, uint requestId, bool approved);
-    event RecordVerified(address indexed requester, address indexed patient, uint recordId, bool isValid);
-    
-    // Access request structure
+    // 접근 요청 구조체
     struct AccessRequest {
-        address requester;      // Requester address
-        uint[] recordIds;       // Requested record IDs
-        bool isPending;         // Pending status
-        bool isApproved;        // Approval status
+        address requester;       // 요청자 주소
+        bytes32 recordHash;      // 요청된 레코드 해시
+        uint256 requestTime;     // 요청 시간
+        bool pendingApproval;    // 승인 대기 상태
+        bool approved;           // 승인 여부
+        uint256 approvalTime;    // 승인 시간
     }
     
-    // Access requests per patient
-    mapping(address => AccessRequest[]) public accessRequests;
+    // 환자별 접근 요청 매핑
+    mapping(address => mapping(bytes32 => AccessRequest)) public accessRequests;
     
-    // Request count per patient (for request ID)
-    mapping(address => uint) private requestCounts;
+    // 접근 요청 ID 추적
+    mapping(bytes32 => bool) public requestExists;
     
-    // Admin address
-    address public admin;
+    // nullifier 해시의 사용 여부를 추적
+    mapping(uint256 => bool) public nullifierUsed;
     
-    // Only admin can call
-    modifier onlyAdmin() {
-        require(msg.sender == admin, "Only admin can call this function");
-        _;
-    }
+    // 이벤트 정의
+    event AccessRequested(address indexed requester, address indexed patient, bytes32 recordHash, bytes32 requestId);
+    event AccessApproved(address indexed patient, bytes32 requestId, uint256 approvalTime);
+    event AccessDenied(address indexed patient, bytes32 requestId);
+    event ProofVerified(address indexed requester, bytes32 recordHash, uint256 nullifierHash, bool isApproved);
     
-    // Only patient can call
-    modifier onlyPatient(address patient) {
-        require(msg.sender == patient, "Only patient can call this function");
-        _;
-    }
-    
-    // Only doctor can call
-    modifier onlyDoctor() {
-        require(zkareContract.isDoctor(msg.sender), "Only doctor can call this function");
-        _;
-    }
-    
-    /**
-     * @dev Constructor
-     * @param _zkareContract Zkare contract address
-     * @param _recordStorage MedicalRecordStorage contract address
-     */
-    constructor(address _zkareContract, address _recordStorage) {
+    constructor(address _zkareContract, address _verifierContract) {
         zkareContract = Zkare(_zkareContract);
-        recordStorage = MedicalRecordStorage(_recordStorage);
-        admin = msg.sender;
+        verifierContract = IGroth16Verifier(_verifierContract);
     }
     
     /**
-     * @dev Request access to medical records (only doctors can call)
-     * @param patient Patient address
-     * @param recordIds Array of requested record IDs
-     * @return requestId Request ID
+     * @dev 의료 기록 접근 요청
+     * @param patient 환자 주소
+     * @param recordHash 요청할 의료 기록 해시
+     * @return requestId 생성된 요청 ID
      */
-    function requestAccess(address patient, uint[] memory recordIds) external onlyDoctor returns (uint) {
-        uint requestId = requestCounts[patient];
-        requestCounts[patient]++;
+    function requestAccess(address patient, bytes32 recordHash) public returns (bytes32) {
+        // 요청 ID 생성
+        bytes32 requestId = keccak256(abi.encodePacked(
+            msg.sender, patient, recordHash, block.timestamp
+        ));
         
-        accessRequests[patient].push(AccessRequest({
+        require(!requestExists[requestId], "Already exists request");
+        
+        // 요청 정보 저장
+        accessRequests[patient][requestId] = AccessRequest({
             requester: msg.sender,
-            recordIds: recordIds,
-            isPending: true,
-            isApproved: false
-        }));
+            recordHash: recordHash,
+            requestTime: block.timestamp,
+            pendingApproval: true,
+            approved: false,
+            approvalTime: 0
+        });
         
-        emit AccessRequestCreated(msg.sender, patient, requestId);
+        requestExists[requestId] = true;
+        
+        emit AccessRequested(msg.sender, patient, recordHash, requestId);
+        
         return requestId;
     }
     
     /**
-     * @dev Patient responds to access request
-     * @param requestId Request ID
-     * @param approved Approval status
+     * @dev 환자가 접근 요청 승인
+     * @param requestId 요청 ID
      */
-    function respondToAccessRequest(uint requestId, bool approved) external {
-        require(requestId < accessRequests[msg.sender].length, "Request ID not found");
+    function approveAccess(bytes32 requestId) public {
         AccessRequest storage request = accessRequests[msg.sender][requestId];
-        require(request.isPending, "Request already processed");
         
-        request.isPending = false;
-        request.isApproved = approved;
+        require(request.pendingApproval, "Invalid request");
         
-        emit AccessRequestResolved(msg.sender, requestId, approved);
+        request.pendingApproval = false;
+        request.approved = true;
+        request.approvalTime = block.timestamp;
+        
+        emit AccessApproved(msg.sender, requestId, block.timestamp);
     }
     
     /**
-     * @dev Verify medical record content
-     * @param patient Patient address
-     * @param recordId Record ID
-     * @param hashToVerify Hash to verify
-     * @return Verification result
+     * @dev 환자가 접근 요청 거부
+     * @param requestId 요청 ID
      */
-    function verifyRecordHash(address patient, uint recordId, bytes32 hashToVerify) external returns (bool) {
-        // Get record from MedicalRecordStorage contract
-        MedicalRecordStorage.MedicalRecord memory record = recordStorage.getPatientRecordById(patient, recordId);
+    function denyAccess(bytes32 requestId) public {
+        AccessRequest storage request = accessRequests[msg.sender][requestId];
         
-        // Verify if content hash matches
-        bool isValid = record.contentHash == hashToVerify;
+        require(request.pendingApproval, "Invalid request");
         
-        emit RecordVerified(msg.sender, patient, recordId, isValid);
+        request.pendingApproval = false;
+        request.approved = false;
+        
+        emit AccessDenied(msg.sender, requestId);
+    }
+    
+    /**
+     * @dev ZK 증명을 검증합니다.
+     * @param a Groth16 증명의 a 부분
+     * @param b Groth16 증명의 b 부분
+     * @param c Groth16 증명의 c 부분
+     * @param recordHash 의료 기록 해시 (2개 요소)
+     * @param approvalTimestamp 승인 시간
+     * @param isApproved 승인 여부
+     * @param nullifierHash nullifier 해시
+     * @return 검증 성공 여부
+     */
+    function verifyMedicalRecordProof(
+        uint[2] memory a,
+        uint[2][2] memory b,
+        uint[2] memory c,
+        uint[2] memory recordHash,
+        uint256 approvalTimestamp,
+        uint256 isApproved,
+        uint256 nullifierHash
+    ) public returns (bool) {
+        // nullifier가 이미 사용되었는지 확인
+        require(!nullifierUsed[nullifierHash], "Already used nullifier");
+        
+        // 공개 입력값 설정 - 가변 배열로 변환
+        uint[] memory input = new uint[](4);
+        input[0] = recordHash[0];
+        input[1] = recordHash[1];
+        input[2] = approvalTimestamp;
+        input[3] = isApproved;
+        
+        // ZK 증명 검증
+        bool isValid = verifierContract.verifyProof(a, b, c, input);
+        
+        if (isValid) {
+            // nullifier 사용 표시
+            nullifierUsed[nullifierHash] = true;
+            
+            // 검증 성공 이벤트 발생
+            bytes32 hashedRecord = bytes32(abi.encodePacked(recordHash[0], recordHash[1]));
+            emit ProofVerified(msg.sender, hashedRecord, nullifierHash, isApproved == 1);
+        }
+        
         return isValid;
     }
     
     /**
-     * @dev Check if access request is approved
-     * @param patient Patient address
-     * @param requestId Request ID
-     * @return isApproved Approval status
+     * @dev 환자의 승인 상태 조회
+     * @param patient 환자 주소
+     * @param requestId 요청 ID
+     * @return 승인 상태 (true: 승인됨, false: 승인되지 않음)
      */
-    function isAccessApproved(address patient, uint requestId) external view returns (bool) {
-        require(requestId < accessRequests[patient].length, "Request ID not found");
-        return accessRequests[patient][requestId].isApproved && !accessRequests[patient][requestId].isPending;
+    function getApprovalStatus(address patient, bytes32 requestId) public view returns (bool, uint256) {
+        AccessRequest storage request = accessRequests[patient][requestId];
+        return (request.approved, request.approvalTime);
     }
     
     /**
-     * @dev Check if requester has approved access to specific record
-     * @param patient Patient address
-     * @param recordId Record ID
-     * @return Approval status
+     * @dev nullifier가 사용되었는지 확인
+     * @param nullifierHash 확인할 nullifier 해시
+     * @return 사용 여부
      */
-    function canAccessRecord(address patient, uint recordId) external view returns (bool) {
-        // Patient always has access to their own records
-        if (msg.sender == patient) {
-            return true;
-        }
-        
-        // For doctors, check if there's an approved request
-        if (zkareContract.isDoctor(msg.sender)) {
-            for (uint i = 0; i < accessRequests[patient].length; i++) {
-                AccessRequest memory request = accessRequests[patient][i];
-                if (request.requester == msg.sender && !request.isPending && request.isApproved) {
-                    // Check if record ID is in requested IDs
-                    for (uint j = 0; j < request.recordIds.length; j++) {
-                        if (request.recordIds[j] == recordId) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-        
-        return false;
-    }
-    
-    /**
-     * @dev Get count of pending access requests for patient
-     * @param patient Patient address
-     * @return Count of pending requests
-     */
-    function getPendingAccessRequestCount(address patient) external view returns (uint) {
-        uint count = 0;
-        for (uint i = 0; i < accessRequests[patient].length; i++) {
-            if (accessRequests[patient][i].isPending) {
-                count++;
-            }
-        }
-        return count;
-    }
-    
-    /**
-     * @dev Get details of specific access request
-     * @param patient Patient address
-     * @param requestId Request ID
-     * @return requester Requester address
-     * @return recordIds Array of requested record IDs
-     * @return isPending Pending status
-     * @return isApproved Approval status
-     */
-    function getAccessRequestDetails(address patient, uint requestId)
-        external
-        view
-        returns (
-            address requester,
-            uint[] memory recordIds,
-            bool isPending,
-            bool isApproved
-        )
-    {
-        require(requestId < accessRequests[patient].length, "Request ID not found");
-        AccessRequest memory request = accessRequests[patient][requestId];
-        
-        return (
-            request.requester,
-            request.recordIds,
-            request.isPending,
-            request.isApproved
-        );
+    function isNullifierUsed(uint256 nullifierHash) public view returns (bool) {
+        return nullifierUsed[nullifierHash];
     }
 } 

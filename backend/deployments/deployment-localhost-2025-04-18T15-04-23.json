@@ -1,0 +1,26 @@
+{
+  "network": "localhost",
+  "timestamp": "2025-04-18T15:04:23.718Z",
+  "contracts": {
+    "zkare": {
+      "address": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+      "name": "Zkare"
+    },
+    "groth16Verifier": {
+      "address": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+      "name": "Groth16Verifier"
+    },
+    "medicalDataVerifier": {
+      "address": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
+      "name": "MedicalDataVerifier"
+    },
+    "medicalRecordVerifier": {
+      "address": "0x0165878A594ca255338adfa4d48449f69242Eb8F",
+      "name": "MedicalRecordVerifier"
+    },
+    "medicalRecordViewer": {
+      "address": "0xa513E6E4b8f2a923D98304ec87F64353C4D5C853",
+      "name": "MedicalRecordViewer"
+    }
+  }
+}
