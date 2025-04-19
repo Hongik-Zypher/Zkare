@@ -295,8 +295,7 @@ function saveDeploymentInfo(deploymentInfo) {
 }
 
 /**
- * 컨트랙트 ABI 파일을 프론트엔드 디렉토리로 복사
- * @param {string} contractName 컨트랙트 이름
+ * 컨트랙트 ABI 파일을 프론트엔드 디렉토리로 복사하는 함수
  */
 async function copyAbiToFrontend(contractName) {
   // ABI 파일 경로
@@ -316,14 +315,8 @@ async function copyAbiToFrontend(contractName) {
     throw new Error(`ABI 파일을 찾을 수 없습니다: ${abiSourcePath}`);
   }
   
-  // 대상 디렉토리 생성
-  const targetDir = path.join(frontendAbisDir, `${contractName}.sol`);
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true });
-  }
-  
-  // ABI 파일 복사
-  const targetPath = path.join(targetDir, `${contractName}.json`);
+  // ABI 파일을 직접 abis 폴더에 복사
+  const targetPath = path.join(frontendAbisDir, `${contractName}.json`);
   fs.copyFileSync(abiSourcePath, targetPath);
   
   console.log(`✅ ${contractName} ABI 파일이 프론트엔드 디렉토리로 복사되었습니다.`);

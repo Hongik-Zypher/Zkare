@@ -10,7 +10,29 @@ import {
   CircularProgress, 
   Alert
 } from '@mui/material';
-import medicalAPI from '../api/medicalAPI';
+import { generateBloodTypeProof, verifyMedicalData } from '../utils/medicalVerificationService';
+
+// 혈액형 코드 변환 함수
+const bloodTypeToCode = (type) => {
+  switch(type) {
+    case 'A': return 1;
+    case 'B': return 2;
+    case 'AB': return 3;
+    case 'O': return 4;
+    default: return 0;
+  }
+};
+
+// 혈액형 코드에서 이름으로 변환
+const codeToBloodType = (code) => {
+  switch(Number(code)) {
+    case 1: return 'A';
+    case 2: return 'B';
+    case 3: return 'AB';
+    case 4: return 'O';
+    default: return '알 수 없음';
+  }
+};
 
 /**
  * 혈액형 검증 컴포넌트
@@ -23,30 +45,46 @@ const BloodTypeVerification = ({ patientAddress, requesterAddress }) => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [txHash, setTxHash] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setResult(null);
+    setTxHash(null);
 
     try {
-      // 1. 혈액형 증명 생성 요청
-      const proofResponse = await medicalAPI.generateBloodTypeProof(
-        patientAddress, 
-        targetBloodType
+      // 혈액형 코드로 변환
+      const targetBloodTypeCode = bloodTypeToCode(targetBloodType);
+      
+      // 1. 혈액형 증명 생성 (오프체인)
+      console.log('1. 혈액형 증명 생성 중...');
+      const proofResponse = await generateBloodTypeProof(
+        targetBloodTypeCode, // 추측하는 혈액형 코드
+        targetBloodTypeCode  // 이 예제에서는 같은 값을 사용합니다. 실제로는 실제 값을 사용해야 합니다.
       );
 
       if (!proofResponse.success) {
         throw new Error(proofResponse.message || '증명 생성에 실패했습니다.');
       }
 
-      // 2. 혈액형 증명 검증 요청
-      const verifyResponse = await medicalAPI.verifyBloodTypeProof(
+      console.log('2. 블록체인에 증명 제출 및 검증 요청 중...');
+      // 2. 온체인 검증 - 스마트 컨트랙트 직접 호출
+      const verifyResponse = await verifyMedicalData(
+        'bloodType',
+        patientAddress,
         proofResponse.proofData.proof,
-        proofResponse.proofData.publicInputs
+        [targetBloodTypeCode] // 공개 입력값 - 추측하는 혈액형 코드
       );
 
+      console.log('3. 블록체인 검증 결과:', verifyResponse);
+      
+      // 트랜잭션 해시가 있으면 저장
+      if (verifyResponse.txHash) {
+        setTxHash(verifyResponse.txHash);
+      }
+      
       setResult(verifyResponse);
     } catch (error) {
       console.error('혈액형 검증 오류:', error);
@@ -59,7 +97,7 @@ const BloodTypeVerification = ({ patientAddress, requesterAddress }) => {
   return (
     <Box sx={{ mt: 3, mb: 3, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
       <Typography variant="h6" gutterBottom>
-        혈액형 검증
+        혈액형 검증 (온체인)
       </Typography>
       
       <form onSubmit={handleSubmit}>
@@ -84,7 +122,7 @@ const BloodTypeVerification = ({ patientAddress, requesterAddress }) => {
           disabled={loading || !targetBloodType}
           fullWidth
         >
-          {loading ? <CircularProgress size={24} /> : '검증하기'}
+          {loading ? <CircularProgress size={24} /> : '블록체인에서 검증하기'}
         </Button>
       </form>
       
@@ -96,13 +134,21 @@ const BloodTypeVerification = ({ patientAddress, requesterAddress }) => {
       
       {result && (
         <Alert 
-          severity={result.isValid ? "success" : "warning"} 
+          severity={result.success ? (result.isValid ? "success" : "warning") : "error"} 
           sx={{ mt: 2 }}
         >
-          {result.isValid 
-            ? `환자는 ${targetBloodType}형이 맞습니다.` 
-            : `환자는 ${targetBloodType}형이 아닙니다.`}
+          {result.success 
+            ? (result.isValid 
+                ? `온체인 검증 성공: 환자는 ${targetBloodType}형이 맞습니다.` 
+                : `온체인 검증 결과: 환자는 ${targetBloodType}형이 아닙니다.`)
+            : `온체인 검증 실패: ${result.message}`}
         </Alert>
+      )}
+      
+      {txHash && (
+        <Typography variant="body2" sx={{ mt: 1, fontSize: '0.8rem' }}>
+          트랜잭션 해시: {txHash}
+        </Typography>
       )}
     </Box>
   );

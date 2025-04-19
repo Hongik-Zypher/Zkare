@@ -2,8 +2,8 @@ import { ethers } from 'ethers';
 import * as snarkjs from 'snarkjs';
 
 // ABI 파일 가져오기 
-const MedicalDataVerifierABI = require('../abis/MedicalDataVerifier.sol/MedicalDataVerifier.json');
-const ZkareABI = require('../abis/Zkare.sol/Zkare.json');
+const MedicalDataVerifierABI = require('../abis/MedicalDataVerifier.json');
+const ZkareABI = require('../abis/Zkare.json');
 
 // 배포 정보 가져오기
 let deploymentInfo;
@@ -494,10 +494,11 @@ export const verifyMedicalData = async (dataType, patientAddress, proof, publicI
     // 컨트랙트 호출 시 사용할 검증 타입에 따른 분기 처리
     let tx;
     if (dataType === "bloodType") {
-      tx = await medicalDataVerifierContract.verifyBloodTypeProof(
-        patientAddress, 
-        a, b, c, 
-        publicInput
+      console.log('컨트랙트 함수 호출: verifyBloodType, 입력값:', patientAddress, publicInput[0], a, b, c);
+      tx = await medicalDataVerifierContract.verifyBloodType(
+        patientAddress,
+        publicInput[0], // guessedBloodType 값을 직접 전달
+        a, b, c
       );
     } else if (dataType === "allergy") {
       tx = await medicalDataVerifierContract.verifyAllergyProof(
@@ -509,17 +510,50 @@ export const verifyMedicalData = async (dataType, patientAddress, proof, publicI
       throw new Error(`지원하지 않는 데이터 타입: ${dataType}`);
     }
     
-    const receipt = await tx.wait();
+    console.log('트랜잭션 전송됨:', tx.hash);
     
-    // 이벤트에서 결과 추출
-    const event = receipt.logs.find(log => 
-      log.fragment && log.fragment.name === 'VerificationResult'
+    // 트랜잭션이 마이닝될 때까지 대기
+    const receipt = await tx.wait();
+    console.log('트랜잭션 마이닝 완료:', receipt);
+    
+    // 이벤트 확인 (BloodTypeVerified 이벤트도 확인)
+    let isValid = false;
+    let eventFound = false;
+    
+    // 모든 이벤트 출력 (디버깅용)
+    console.log('수신된 이벤트 로그:', receipt.logs);
+    
+    // BloodTypeVerified 이벤트 확인
+    const bloodTypeEvent = receipt.logs.find(log => 
+      log.fragment && log.fragment.name === 'BloodTypeVerified'
     );
-    const isValid = event ? event.args.isValid : false;
+    
+    if (bloodTypeEvent) {
+      eventFound = true;
+      isValid = bloodTypeEvent.args.isMatch;
+      console.log('BloodTypeVerified 이벤트 발견:', bloodTypeEvent.args);
+    } else {
+      // VerificationResult 이벤트 확인 (대체 이벤트)
+      const verificationEvent = receipt.logs.find(log => 
+        log.fragment && log.fragment.name === 'VerificationResult'
+      );
+      
+      if (verificationEvent) {
+        eventFound = true;
+        isValid = verificationEvent.args.isValid;
+        console.log('VerificationResult 이벤트 발견:', verificationEvent.args);
+      }
+    }
+    
+    // 이벤트를 찾지 못한 경우 경고 로그 출력
+    if (!eventFound) {
+      console.warn('이벤트를 찾을 수 없습니다. 트랜잭션은 성공했지만 결과를 확인할 수 없습니다.');
+    }
     
     return {
       success: true,
       isValid,
+      txHash: tx.hash,
       message: isValid 
         ? '증명이 유효합니다. 검증이 성공적으로 완료되었습니다.'
         : '증명이 유효하지 않습니다. 검증에 실패했습니다.'
@@ -528,7 +562,7 @@ export const verifyMedicalData = async (dataType, patientAddress, proof, publicI
     console.error(`${dataType} 검증 오류:`, error);
     return {
       success: false,
-      message: `오류: ${error.message}`
+      message: `온체인 검증 오류: ${error.message}`
     };
   }
 };

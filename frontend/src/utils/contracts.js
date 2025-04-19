@@ -1,11 +1,11 @@
 import { ethers } from 'ethers';
 
-// ABI 파일 가져오기
-const ZkareABI = require('../abis/Zkare.sol/Zkare.json');
-const MedicalDataVerifierABI = require('../abis/MedicalDataVerifier.sol/MedicalDataVerifier.json');
-const MedicalRecordVerifierABI = require('../abis/MedicalRecordVerifier.sol/MedicalRecordVerifier.json');
-const Groth16VerifierABI = require('../abis/Groth16Verifier.sol/Groth16Verifier.json');
-const MedicalRecordViewerABI = require('../abis/MedicalRecordViewer.sol/MedicalRecordViewer.json');
+// ABI 파일 가져오기 (직접 abis 폴더에서 가져오도록 변경)
+const ZkareABI = require('../abis/Zkare.json');
+const MedicalDataVerifierABI = require('../abis/MedicalDataVerifier.json');
+const MedicalRecordVerifierABI = require('../abis/MedicalRecordVerifier.json');
+const Groth16VerifierABI = require('../abis/Groth16Verifier.json');
+const MedicalRecordViewerABI = require('../abis/MedicalRecordViewer.json');
 
 // 기본 배포 정보 (선택적으로 import, 파일이 없을 수 있음)
 let latestDeployment = null;
