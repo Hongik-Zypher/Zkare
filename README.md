@@ -9,6 +9,9 @@ Zkare는 영지식증명(Zero-Knowledge Proof)을 활용하여 환자의 개인�
 - **의료 기록 무결성 검증**: 블록체인에 저장된 해시를 통한 데이터 무결성 보장
 - **개인정보 보호 강화**: 중요한 의료 데이터를 공개하지 않고 접근 관리
 - **스마트 컨트랙트 기반 자동화**: 승인된 접근에 대한 자동 처리
+- **증명 기록 추적 시스템**: 환자 및 요청자가 모든 증명 기록을 확인 가능
+- **요청 상태 관리**: 요청자의 모든 대기 중인 요청과 응답 현황 실시간 확인
+- **혈액형 검증 기능**: 환자의 실제 혈액형을 공개하지 않고 특정 혈액형과의 일치 여부 검증
 
 ## 🏗️ 시스템 아키텍처
 
@@ -21,14 +24,16 @@ Zkare는 영지식증명(Zero-Knowledge Proof)을 활용하여 환자의 개인�
 
 2. **ZK 증명 서킷**
    - `medical_record_proof.circom`: 의료 기록 접근 증명 서킷
+   - `blood_type_proof.circom`: 혈액형 검증 증명 서킷
 
 3. **백엔드 서비스**
    - ZK 증명 생성 서비스
    - 블록체인 상호작용 API
+   - 증명 기록 관리 시스템
    
 4. **프론트엔드**
-   - 환자용 인터페이스: 접근 요청 관리
-   - 요청자용 인터페이스: 의료 기록 접근 요청
+   - 환자용 인터페이스: 접근 요청 관리, 증명 기록 조회
+   - 요청자용 인터페이스: 의료 기록 접근 요청, 요청 현황 및 증명 결과 조회
 
 ## 📂 폴더 구조
 
@@ -41,10 +46,13 @@ Zkare는 영지식증명(Zero-Knowledge Proof)을 활용하여 환자의 개인�
 │   └── Zkare.sol
 │
 ├── circuits/                       # ZK 서킷 코드
-│   ├── medical_record_proof/
+│   ├── medical_record_proof/       # 의료 기록 증명 서킷
 │   │   ├── medical_record_proof.circom
 │   │   └── ... (생성된 파일들)
-│   └── compile.sh
+│   ├── blood_type/                 # 혈액형 증명 서킷
+│   │   ├── blood_type_proof.circom
+│   │   └── ... (생성된 파일들)
+│   └── build.js                    # 서킷 빌드 스크립트
 │
 ├── frontend/                       # 웹 프론트엔드
 │   ├── src/
@@ -54,16 +62,20 @@ Zkare는 영지식증명(Zero-Knowledge Proof)을 활용하여 환자의 개인�
 │   │   ├── api/
 │   │   │   └── proofAPI.js         # 백엔드 API 클라이언트
 │   │   ├── components/            # React 컴포넌트
+│   │   │   └── BloodTypeVerification.js # 혈액형 검증 컴포넌트
 │   │   ├── pages/
+│   │   │   ├── PatientDashboard.js  # 환자 대시보드
+│   │   │   └── RequesterDashboard.js # 요청자 대시보드
 │   │   └── App.js
 │   ├── public/
+│   │   └── circuits/              # 컴파일된 서킷 파일
 │   └── package.json
 │
 └── backend/                        # 백엔드 서버
     ├── controllers/
     │   └── proofController.js      # API 컨트롤러
     ├── routes/
-    │   └── zkProofRoutes.js          # API 라우트
+    │   └── zkProofRoutes.js        # API 라우트
     ├── services/
     │   └── zkProofService.js       # ZK 증명 생성 서비스
     ├── constants/
@@ -78,8 +90,9 @@ Zkare는 영지식증명(Zero-Knowledge Proof)을 활용하여 환자의 개인�
 - **블록체인**: 이더리움
 - **스마트 컨트랙트**: Solidity
 - **ZK 증명**: Circom, SnarkJS
-- **프론트엔드**: React, Ethers.js
+- **프론트엔드**: React, Material-UI, Ethers.js v6
 - **백엔드**: Node.js, Express
+- **상태 관리**: React Hooks
 
 ## 🚀 시작하기
 

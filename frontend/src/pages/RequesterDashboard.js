@@ -20,12 +20,24 @@ import {
   Step,
   StepLabel,
   Card,
-  CardContent
+  CardContent,
+  Grid,
+  TableContainer,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  IconButton,
+  Tooltip
 } from '@mui/material';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import HistoryIcon from '@mui/icons-material/History';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import TimelineIcon from '@mui/icons-material/Timeline';
+import ArticleIcon from '@mui/icons-material/Article';
 import RequesterInterface from '../interfaces/RequesterInterface';
 import proofAPI from '../api/proofAPI';
 import { verifyProof } from '../utils/wallet';
@@ -40,7 +52,9 @@ const RequesterDashboard = ({ account, provider, signer, isConnected }) => {
   const [error, setError] = useState(null);
   const [requestId, setRequestId] = useState(null);
   const [proofs, setProofs] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
   const [loadingProofs, setLoadingProofs] = useState(false);
+  const [loadingPendingRequests, setLoadingPendingRequests] = useState(false);
   const [requesterInterface, setRequesterInterface] = useState(null);
 
   // 지갑 연결 상태 확인 및 리다이렉트
@@ -159,12 +173,37 @@ const RequesterDashboard = ({ account, provider, signer, isConnected }) => {
     }
   };
 
-  // 컴포넌트 마운트 시 증명 목록 로드
+  // 대기 중인 요청 목록 로드
+  const loadPendingRequests = async () => {
+    if (!requesterInterface || !account) return;
+
+    setLoadingPendingRequests(true);
+    setError(null);
+
+    try {
+      // RequesterInterface를 통해 대기 중인 요청 목록 조회
+      const requests = await requesterInterface.getPendingRequests(account);
+      setPendingRequests(requests);
+    } catch (error) {
+      console.error('대기 중인 요청 목록 로드 오류:', error);
+      setError('대기 중인 요청 목록을 불러오는 데 실패했습니다.');
+    } finally {
+      setLoadingPendingRequests(false);
+    }
+  };
+
+  // 컴포넌트 마운트 시 증명 목록과 대기 중인 요청 목록 로드
   useEffect(() => {
     if (account) {
       loadProofs();
     }
   }, [account]);
+
+  useEffect(() => {
+    if (requesterInterface && account) {
+      loadPendingRequests();
+    }
+  }, [requesterInterface, account]);
 
   // 접근 요청 제출
   const handleRequestAccess = async () => {
@@ -297,6 +336,12 @@ const RequesterDashboard = ({ account, provider, signer, isConnected }) => {
     return new Date(timestamp).toLocaleString();
   };
 
+  // 요청자 주소 줄임 함수
+  const shortenAddress = (address) => {
+    if (!address) return '';
+    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+  };
+
   // 로딩 중 표시
   if (!isConnected) {
     return (
@@ -409,6 +454,83 @@ const RequesterDashboard = ({ account, provider, signer, isConnected }) => {
         </Button>
       </Paper>
 
+      {/* 대기 중인 요청 목록 */}
+      <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <TimelineIcon sx={{ mr: 1 }} />
+            <Typography variant="h6">요청 응답 현황</Typography>
+          </Box>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<RefreshIcon />}
+            onClick={loadPendingRequests}
+            disabled={loadingPendingRequests}
+          >
+            {loadingPendingRequests ? <CircularProgress size={20} /> : '새로고침'}
+          </Button>
+        </Box>
+        
+        {loadingPendingRequests ? (
+          <Box sx={{ p: 3, textAlign: 'center' }}>
+            <CircularProgress />
+          </Box>
+        ) : pendingRequests.length === 0 ? (
+          <Box sx={{ p: 3, textAlign: 'center' }}>
+            <Typography variant="body1" color="text.secondary">
+              대기 중인 요청이 없습니다.
+            </Typography>
+          </Box>
+        ) : (
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>요청 ID</TableCell>
+                  <TableCell>환자 주소</TableCell>
+                  <TableCell>기록 해시</TableCell>
+                  <TableCell>요청 시간</TableCell>
+                  <TableCell>상태</TableCell>
+                  <TableCell>작업</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {pendingRequests.map((request) => (
+                  <TableRow key={request.requestId}>
+                    <TableCell>{request.requestId.substring(0, 8)}...</TableCell>
+                    <TableCell>{shortenAddress(request.patientAddress)}</TableCell>
+                    <TableCell>{request.recordHash && request.recordHash.substring(0, 8)}...</TableCell>
+                    <TableCell>{formatDate(request.requestTime)}</TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        color="warning"
+                        label="승인 대기중"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Tooltip title="상태 확인">
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setRequestId(request.requestId);
+                            setPatientAddress(request.patientAddress);
+                            checkApprovalStatus();
+                          }}
+                        >
+                          <RefreshIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Paper>
+      
       <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
         <Typography variant="h5" gutterBottom>
           <VerifiedUserIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
@@ -427,56 +549,67 @@ const RequesterDashboard = ({ account, provider, signer, isConnected }) => {
       </Paper>
 
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" gutterBottom>
-          <HistoryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          증명 내역
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h5">
+            <HistoryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+            증명 내역
+          </Typography>
           <Button
             variant="outlined"
             size="small"
-            sx={{ ml: 2 }}
+            startIcon={<RefreshIcon />}
             onClick={loadProofs}
             disabled={loadingProofs}
           >
             {loadingProofs ? <CircularProgress size={20} /> : '새로고침'}
           </Button>
-        </Typography>
+        </Box>
         
-        {proofs.length === 0 ? (
+        {loadingProofs ? (
+          <Box sx={{ p: 3, textAlign: 'center' }}>
+            <CircularProgress />
+          </Box>
+        ) : proofs.length === 0 ? (
           <Paper sx={{ p: 3, textAlign: 'center' }}>
             <Typography variant="body1" color="text.secondary">
               아직 생성된 증명이 없습니다.
             </Typography>
           </Paper>
         ) : (
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 3 }}>
+          <Grid container spacing={3}>
             {proofs.map((proof) => (
-              <Card key={proof.id} elevation={2}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <VerifiedUserIcon color="success" sx={{ mr: 1 }} />
-                    <Typography variant="h6" component="div">
-                      증명 {proof.id.substring(0, 8)}
+              <Grid item xs={12} sm={6} md={4} key={proof.id}>
+                <Card elevation={2}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                      <VerifiedUserIcon color={proof.isApproved ? "success" : "error"} sx={{ mr: 1 }} />
+                      <Typography variant="h6" component="div">
+                        증명 {proof.id.substring(0, 8)}
+                      </Typography>
+                    </Box>
+                    <Chip
+                      label={proof.isApproved ? '승인됨' : '거부됨'}
+                      color={proof.isApproved ? 'success' : 'error'}
+                      size="small"
+                      sx={{ mb: 2 }}
+                    />
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      환자: {shortenAddress(proof.patientAddress)}
                     </Typography>
-                  </Box>
-                  <Chip
-                    label={proof.isApproved ? '승인됨' : '거부됨'}
-                    color={proof.isApproved ? 'success' : 'error'}
-                    size="small"
-                    sx={{ mb: 2 }}
-                  />
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    환자: {proof.patientAddress.substring(0, 6)}...{proof.patientAddress.substring(proof.patientAddress.length - 4)}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    기록 해시: {proof.recordHash.substring(0, 10)}...
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    생성일: {formatDate(proof.createdAt)}
-                  </Typography>
-                </CardContent>
-              </Card>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      기록 해시: {proof.recordHash && proof.recordHash.substring(0, 10)}...
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      Nullifier: {proof.nullifierHash && proof.nullifierHash.substring(0, 8)}...
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      생성일: {formatDate(proof.createdAt)}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
             ))}
-          </Box>
+          </Grid>
         )}
       </Box>
     </Container>

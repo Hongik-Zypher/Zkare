@@ -21,7 +21,9 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import HistoryIcon from '@mui/icons-material/History';
 import NewReleasesIcon from '@mui/icons-material/NewReleases';
+import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import PatientInterface from '../interfaces/PatientInterface';
+import proofAPI from '../api/proofAPI';
 
 const PatientDashboard = ({ account, provider, signer, isConnected }) => {
   const navigate = useNavigate();
@@ -30,6 +32,8 @@ const PatientDashboard = ({ account, provider, signer, isConnected }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [patientInterface, setPatientInterface] = useState(null);
+  const [proofs, setProofs] = useState([]);
+  const [loadingProofs, setLoadingProofs] = useState(false);
 
   // 지갑 연결 상태 확인 및 리다이렉트
   useEffect(() => {
@@ -343,12 +347,38 @@ const PatientDashboard = ({ account, provider, signer, isConnected }) => {
     }
   };
 
+  // 증명 기록 로드
+  const loadProofs = async () => {
+    if (!account) return;
+    
+    setLoadingProofs(true);
+    setError(null);
+    
+    try {
+      // API를 통해 증명 목록 조회 (환자 주소로 필터링)
+      const response = await proofAPI.getAllProofs({ patientAddress: account });
+      setProofs(response.data);
+    } catch (error) {
+      console.error('증명 목록 로드 오류:', error);
+      setError('증명 목록을 불러오는 데 실패했습니다.');
+    } finally {
+      setLoadingProofs(false);
+    }
+  };
+
   // 컴포넌트 마운트 시 및 PatientInterface 변경 시 요청 목록 로드
   useEffect(() => {
     if (patientInterface) {
       loadRequests();
     }
   }, [patientInterface, account]);
+
+  // 컴포넌트 마운트 시 증명 목록 로드
+  useEffect(() => {
+    if (account) {
+      loadProofs();
+    }
+  }, [account]);
 
   // 요청 승인/거부 처리
   const handleRequestAction = async (requestId, approve) => {
@@ -546,6 +576,81 @@ const PatientDashboard = ({ account, provider, signer, isConnected }) => {
                     />
                   </ListItem>
                   {index < approvedRequests.length - 1 && <Divider />}
+                </React.Fragment>
+              ))}
+            </List>
+          )}
+        </Paper>
+      </Box>
+
+      {/* 증명 기록 섹션 추가 */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h5" gutterBottom>
+          <VerifiedUserIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+          내 증명 기록
+          <Button
+            variant="outlined"
+            size="small"
+            sx={{ ml: 2 }}
+            onClick={loadProofs}
+            disabled={loadingProofs}
+          >
+            {loadingProofs ? <CircularProgress size={20} /> : '새로고침'}
+          </Button>
+        </Typography>
+        <Paper elevation={2}>
+          {loadingProofs ? (
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <CircularProgress />
+            </Box>
+          ) : proofs.length === 0 ? (
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="body1" color="text.secondary">
+                생성된 증명 기록이 없습니다.
+              </Typography>
+            </Box>
+          ) : (
+            <List>
+              {proofs.map((proof, index) => (
+                <React.Fragment key={proof.id}>
+                  <ListItem>
+                    <ListItemAvatar>
+                      <Avatar sx={{ bgcolor: proof.isApproved ? 'success.main' : 'error.main' }}>
+                        {proof.isApproved ? <CheckCircleIcon /> : <CancelIcon />}
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={
+                        <>
+                          <Typography component="span" variant="body1">
+                            증명 ID: {proof.id.substring(0, 10)}...
+                          </Typography>
+                          <Chip
+                            size="small"
+                            color={proof.isApproved ? 'success' : 'error'}
+                            label={proof.isApproved ? '승인됨' : '거부됨'}
+                            sx={{ ml: 1 }}
+                          />
+                        </>
+                      }
+                      secondary={
+                        <>
+                          <Typography component="span" variant="body2">
+                            요청자: {shortenAddress(proof.requesterAddress)}
+                          </Typography>
+                          <br />
+                          <Typography component="span" variant="body2">
+                            기록 해시: {proof.recordHash && proof.recordHash.substring(0, 10)}...
+                          </Typography>
+                          <br />
+                          <Typography component="span" variant="body2">
+                            생성일: {formatDate(proof.createdAt)}
+                          </Typography>
+                        </>
+                      }
+                    />
+                  </ListItem>
+                  {index < proofs.length - 1 && <Divider />}
                 </React.Fragment>
               ))}
             </List>

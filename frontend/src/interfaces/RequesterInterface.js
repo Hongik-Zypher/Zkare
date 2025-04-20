@@ -227,6 +227,69 @@ class RequesterInterface {
       throw error;
     }
   }
+
+  /**
+   * 요청자의 대기 중인 요청 목록 조회
+   * @param {string} requesterAddress - 요청자 이더리움 주소
+   * @returns {Promise<Array>} 대기 중인 요청 목록
+   */
+  async getPendingRequests(requesterAddress) {
+    try {
+      // ethers.js v6에서 이벤트 필터링 방식이 변경됨
+      // AccessRequested 이벤트 로그 필터링
+      const filter = {
+        address: this.verifierContract.target,
+        topics: [
+          ethers.id("AccessRequested(address,address,bytes32,bytes32)"),
+          ethers.zeroPadValue(ethers.getAddress(requesterAddress), 32)
+        ]
+      };
+      const logs = await this.provider.getLogs(filter);
+      
+      // 각 요청 상태 확인
+      const pendingRequests = [];
+      for (const log of logs) {
+        const parsedLog = this.verifierContract.interface.parseLog({
+          topics: log.topics,
+          data: log.data
+        });
+        
+        if (!parsedLog) continue;
+        
+        const requestId = parsedLog.args[3]; // requestId는 네 번째 인수
+        const patientAddress = parsedLog.args[1]; // patient는 두 번째 인수
+        const recordHash = parsedLog.args[2]; // recordHash는 세 번째 인수
+        
+        try {
+          // 요청 상태 확인
+          const [isApproved, approvalTime] = await this.verifierContract.getApprovalStatus(
+            patientAddress, 
+            requestId
+          );
+          
+          if (!isApproved) {
+            // 요청 상세 정보 조회
+            const request = await this.verifierContract.getRequestDetails(requestId);
+            if (request && request.pendingApproval) {
+              pendingRequests.push({
+                requestId,
+                patientAddress,
+                recordHash,
+                requestTime: Number(request.requestTime)
+              });
+            }
+          }
+        } catch (err) {
+          console.error('요청 상세 정보 조회 오류:', err);
+        }
+      }
+      
+      return pendingRequests;
+    } catch (error) {
+      console.error('대기 중인 요청 조회 오류:', error);
+      return [];
+    }
+  }
 }
 
 module.exports = RequesterInterface; 
