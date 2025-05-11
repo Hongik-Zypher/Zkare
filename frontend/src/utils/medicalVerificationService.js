@@ -170,6 +170,17 @@ export const getPatientData = async (patientAddress, dataType) => {
   if (!medicalDataVerifierContract) await initVerificationService();
 
   try {
+    // 현재 계정이 환자 본인이거나 의사인지 먼저 확인
+    const currentAccount = await getCurrentAccount();
+    const isDocAccount = await isDoctor();
+    
+    if (currentAccount.toLowerCase() !== patientAddress.toLowerCase() && !isDocAccount) {
+      return {
+        success: false,
+        message: "환자 본인 또는 의사만 데이터에 접근할 수 있습니다."
+      };
+    }
+    
     const value = await medicalDataVerifierContract.getPatientData(
       patientAddress,
       dataType
@@ -182,6 +193,49 @@ export const getPatientData = async (patientAddress, dataType) => {
     };
   } catch (error) {
     console.error("환자 데이터 조회 오류:", error);
+    return {
+      success: false,
+      message: `오류: ${error.message}`,
+    };
+  }
+};
+
+/**
+ * 요청자용 환자 데이터 안전 조회 (직접 호출하지 않고 승인 여부 확인)
+ * @param {string} patientAddress 환자 주소
+ * @param {string} requestId 요청 ID
+ * @param {string} dataType 데이터 타입 (예: "bloodType")
+ */
+export const getPatientDataSafe = async (patientAddress, requestId, dataType) => {
+  if (!medicalDataVerifierContract) await initVerificationService();
+
+  try {
+    // 요청이 승인되었는지 확인
+    try {
+      const request = await medicalDataVerifierContract.getRequestDetails(patientAddress, requestId);
+      if (!request || !request.isApproved) {
+        return {
+          success: false,
+          message: "승인되지 않은 요청이거나 요청을 찾을 수 없습니다."
+        };
+      }
+    } catch (reqError) {
+      console.error("요청 상태 확인 오류:", reqError);
+      return {
+        success: false,
+        message: "요청 상태를 확인할 수 없습니다."
+      };
+    }
+    
+    // 환자가 생성한 증명 이벤트 확인 (대체 방법)
+    return {
+      success: true,
+      // 실제 값 대신 대체 방법 사용 (요청자는 직접 액세스 불가)
+      value: null,
+      message: "승인된 요청입니다. 증명 결과를 확인하세요."
+    };
+  } catch (error) {
+    console.error("환자 데이터 안전 조회 오류:", error);
     return {
       success: false,
       message: `오류: ${error.message}`,
@@ -819,6 +873,8 @@ export const getPatientsList = async () => {
 
   try {
     let patients = [];
+    // 현재 계정이 의사인지 확인
+    const isDocAccount = await isDoctor();
 
     try {
       // getAllPatients 함수가 존재하는지 확인
@@ -840,17 +896,21 @@ export const getPatientsList = async () => {
                   recordCount = Number(count);
                 }
 
-                // 환자의 혈액형 정보 조회
-                try {
-                  const bloodTypeResult =
-                    await medicalDataVerifierContract.getPatientData(
-                      address,
-                      "bloodType"
-                    );
-                  bloodType = Number(bloodTypeResult);
-                } catch (bloodTypeError) {
-                  console.log("혈액형 정보 없음:", address);
-                  // 혈액형 정보가 없는 경우 무시
+                // 환자의 혈액형 정보 조회 - 의사만 가능
+                if (isDocAccount) {
+                  try {
+                    const bloodTypeResult =
+                      await medicalDataVerifierContract.getPatientData(
+                        address,
+                        "bloodType"
+                      );
+                    bloodType = Number(bloodTypeResult);
+                  } catch (bloodTypeError) {
+                    console.log("혈액형 정보 없음:", address);
+                    // 혈액형 정보가 없는 경우 무시
+                  }
+                } else {
+                  console.log("의사가 아니므로 환자 혈액형 정보를 조회하지 않습니다");
                 }
               } catch (countError) {
                 console.warn("환자 데이터 조회 오류:", countError);
@@ -889,6 +949,32 @@ export const getPatientsList = async () => {
       patients: [],
       message: `오류: ${error.message}`,
     };
+  }
+};
+
+/**
+ * 혈액형 직접 확인 함수 (환자 실제 혈액형과 요청 혈액형 일치 여부 확인)
+ * @param {string} patientAddress 환자 주소
+ * @param {number} guessedBloodType 확인할 혈액형 코드
+ * @returns {Promise<boolean>} 일치 여부 결과
+ */
+export const checkBloodType = async (patientAddress, guessedBloodType) => {
+  if (!medicalDataVerifierContract) await initVerificationService();
+
+  try {
+    console.log(`직접 혈액형 확인: 환자=${patientAddress}, 확인 혈액형=${guessedBloodType}`);
+    
+    // 컨트랙트의 checkBloodType 함수 호출
+    const isMatch = await medicalDataVerifierContract.checkBloodType(
+      patientAddress,
+      guessedBloodType
+    );
+    
+    console.log(`직접 확인 결과: ${isMatch}`);
+    return isMatch;
+  } catch (error) {
+    console.error("혈액형 직접 확인 오류:", error);
+    return false;
   }
 };
 

@@ -33,53 +33,29 @@ const proofsDB = [];
  */
 exports.generateProof = async (req, res) => {
   try {
-    // ZkProofService 인스턴스 확인
-    if (!zkProofService) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'ZK 증명 서비스가 초기화되지 않았습니다. 서버 로그를 확인하세요.' 
-      });
-    }
-
     const { patientAddress, requestId, requesterAddress } = req.body;
     
-    // 필수 파라미터 검증
     if (!patientAddress || !requestId || !requesterAddress) {
-      return res.status(400).json({ 
-        success: false, 
-        message: '모든 필수 파라미터를 제공해야 합니다.' 
+      return res.status(400).json({
+        success: false,
+        message: '필수 파라미터가 누락되었습니다. (patientAddress, requestId, requesterAddress)'
       });
     }
-
-    // ZK 증명 생성
-    const proofData = await zkProofService.generateProof(
-      patientAddress, 
-      requestId, 
-      requesterAddress
-    );
-
-    // 증명 저장 (ID 생성)
-    const proofId = Date.now().toString();
-    const savedProof = {
-      id: proofId,
-      ...proofData,
-      createdAt: new Date().toISOString()
-    };
     
-    proofsDB.push(savedProof);
-
-    // 성공 응답
-    res.status(200).json({
+    console.log(`증명 생성 요청: 환자=${patientAddress}, 요청ID=${requestId}, 요청자=${requesterAddress}`);
+    
+    const proofData = await zkProofService.createProof(patientAddress, requestId, requesterAddress);
+    
+    return res.json({
       success: true,
-      proofId,
-      data: proofData
+      message: '증명이 성공적으로 생성되었습니다.',
+      proofData
     });
   } catch (error) {
     console.error('증명 생성 오류:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: '증명 생성 중 오류가 발생했습니다.',
-      error: error.message
+      message: error.message || '증명 생성 중 오류가 발생했습니다.'
     });
   }
 };
@@ -132,36 +108,26 @@ exports.verifyProofStatus = async (req, res) => {
  */
 exports.validateProof = async (req, res) => {
   try {
-    // ZkProofService 인스턴스 확인
-    if (!zkProofService) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'ZK 증명 서비스가 초기화되지 않았습니다. 서버 로그를 확인하세요.' 
-      });
-    }
-
     const { proof, publicSignals } = req.body;
     
     if (!proof || !publicSignals) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'proof와 publicSignals가 모두 필요합니다.' 
+      return res.status(400).json({
+        success: false,
+        message: '증명 데이터가 필요합니다.'
       });
     }
-
-    // 증명 오프체인 검증
+    
     const isValid = await zkProofService.validateProof(proof, publicSignals);
-
-    res.status(200).json({
+    
+    return res.json({
       success: true,
       isValid
     });
   } catch (error) {
     console.error('증명 검증 오류:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: '증명 검증 중 오류가 발생했습니다.',
-      error: error.message
+      message: error.message || '증명 검증 중 오류가 발생했습니다.'
     });
   }
 };
@@ -174,41 +140,26 @@ exports.validateProof = async (req, res) => {
  */
 exports.verifyProof = async (req, res) => {
   try {
-    // ZkProofService 인스턴스 확인
-    if (!zkProofService) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'ZK 증명 서비스가 초기화되지 않았습니다. 서버 로그를 확인하세요.' 
-      });
-    }
-
     const { proof, publicInputs } = req.body;
     
     if (!proof || !publicInputs) {
       return res.status(400).json({
         success: false,
-        message: 'proof와 publicInputs가 모두 필요합니다.'
+        message: '증명 데이터가 필요합니다.'
       });
     }
     
-    // 새로운 방식 안내
-    console.warn('비권장 API 호출: verifyProof. 대신 prepare-verification을 사용하세요.');
+    const transactionData = await zkProofService.prepareVerifyTransaction(proof, publicInputs);
     
-    // 트랜잭션 데이터 준비
-    const txData = await zkProofService.prepareProofTransaction(proof, publicInputs);
-    
-    res.status(200).json({
+    return res.json({
       success: true,
-      message: '온체인 검증을 위해서는 사용자 지갑을 통한 서명이 필요합니다.',
-      transactionData: txData,
-      updateNotice: '새로운 API인 /api/proofs/prepare-verification과 /api/proofs/submit-transaction을 사용하세요.'
+      transactionData
     });
   } catch (error) {
-    console.error('온체인 증명 검증 오류:', error);
-    res.status(500).json({
+    console.error('검증 트랜잭션 준비 오류:', error);
+    return res.status(500).json({
       success: false,
-      message: '온체인 증명 검증 중 오류가 발생했습니다.',
-      error: error.message
+      message: error.message || '검증 트랜잭션 준비 중 오류가 발생했습니다.'
     });
   }
 };
@@ -582,6 +533,110 @@ exports.verifyBloodTypeProof = async (req, res) => {
       success: false,
       message: '혈액형 증명 검증 중 오류가 발생했습니다.',
       error: error.message
+    });
+  }
+};
+
+/**
+ * 환자가 승인 후 ZK 증명 생성
+ * @param {Request} req - Express 요청 객체
+ * @param {Response} res - Express 응답 객체
+ */
+exports.generatePatientProof = async (req, res) => {
+  try {
+    const { 
+      requestId, 
+      patientAddress, 
+      requesterAddress, 
+      patientData 
+    } = req.body;
+    
+    if (!patientAddress || !requestId || !requesterAddress || !patientData) {
+      return res.status(400).json({
+        success: false,
+        message: '필수 파라미터가 누락되었습니다.'
+      });
+    }
+    
+    console.log(`환자 증명 생성 요청: 환자=${patientAddress}, 요청ID=${requestId}, 요청자=${requesterAddress}`);
+    
+    // 환자 데이터 검증 (실제로는 DB와 대조하거나 스마트 컨트랙트에서 가져온 값 사용)
+    if (patientData.bloodTypeCode < 1 || patientData.bloodTypeCode > 4) {
+      return res.status(400).json({
+        success: false,
+        message: '유효하지 않은 혈액형 코드입니다.'
+      });
+    }
+    
+    // 승인 상태 확인 (선택적)
+    try {
+      const approvalStatus = await zkProofService.checkApprovalStatus(patientAddress, requestId);
+      if (!approvalStatus.isApproved) {
+        return res.status(400).json({
+          success: false,
+          message: '아직 요청이 승인되지 않았습니다.'
+        });
+      }
+    } catch (statusError) {
+      console.error('승인 상태 확인 오류:', statusError);
+      // 승인 상태 확인 실패는 무시하고 계속 진행 (옵션)
+    }
+    
+    // 증명 생성을 위한 입력값 구성
+    const bloodTypeInput = {
+      actualBloodTypeCode: patientData.bloodTypeCode,
+      targetBloodTypeCode: patientData.bloodTypeCode
+    };
+    
+    // 혈액형 검증을 위한 증명 생성
+    const proofData = await zkProofService.generateBloodTypeProof(
+      patientAddress, 
+      bloodTypeInput.actualBloodTypeCode,
+      bloodTypeInput.targetBloodTypeCode
+    );
+    
+    return res.json({
+      success: true,
+      message: '환자 데이터를 위한 증명이 성공적으로 생성되었습니다.',
+      proofData
+    });
+  } catch (error) {
+    console.error('환자 증명 생성 오류:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || '증명 생성 중 오류가 발생했습니다.'
+    });
+  }
+};
+
+/**
+ * 증명 상태 확인
+ * @param {Request} req - Express 요청 객체
+ * @param {Response} res - Express 응답 객체
+ */
+exports.getProofStatus = async (req, res) => {
+  try {
+    const { nullifierHash } = req.params;
+    
+    if (!nullifierHash) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nullifier 해시가 필요합니다.'
+      });
+    }
+    
+    // 실제 구현에서는 DB나 이벤트 로그에서 해당 증명의 상태를 확인
+    const status = await zkProofService.getProofStatus(nullifierHash);
+    
+    return res.json({
+      success: true,
+      status
+    });
+  } catch (error) {
+    console.error('증명 상태 확인 오류:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || '증명 상태 확인 중 오류가 발생했습니다.'
     });
   }
 }; 

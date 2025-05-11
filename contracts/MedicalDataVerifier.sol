@@ -136,7 +136,8 @@ contract MedicalDataVerifier {
         uint guessedValue
     ) external returns (uint) {
         require(verifiers[verificationType] != address(0), "Verification type not supported");
-        require(patientData[patient][verificationType] != 0, "Patient data not registered");
+        // 데이터 등록 여부 검증 제거
+        // 이제 승인 후 환자가 증명을 생성할 때 데이터 존재 여부를 확인
         
         uint requestId = requestCounts[patient];
         requestCounts[patient]++;
@@ -192,7 +193,12 @@ contract MedicalDataVerifier {
         
         require(!request.isPending, "Request still pending");
         require(request.isApproved, "Request was denied");
-        require(msg.sender == request.requester, "Only requester can submit proof");
+        
+        // 환자나 의사만 증명을 제출할 수 있도록 변경
+        require(
+            msg.sender == patient || zkareContract.isDoctor(msg.sender),
+            "Only patient or doctor can submit proof"
+        );
         
         string memory verificationType = request.verificationType;
         address verifierAddr = verifiers[verificationType];
@@ -202,10 +208,10 @@ contract MedicalDataVerifier {
         
         // 특정 데이터 유형별 이벤트 발생
         if (keccak256(abi.encodePacked(verificationType)) == keccak256(abi.encodePacked("bloodType"))) {
-            emit BloodTypeVerified(msg.sender, patient, isValid);
+            emit BloodTypeVerified(request.requester, patient, isValid);
         }
         
-        emit VerificationResult(msg.sender, patient, verificationType, isValid);
+        emit VerificationResult(request.requester, patient, verificationType, isValid);
         return isValid;
     }
     

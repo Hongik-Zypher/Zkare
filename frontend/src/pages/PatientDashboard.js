@@ -24,6 +24,7 @@ import NewReleasesIcon from '@mui/icons-material/NewReleases';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import PatientInterface from '../interfaces/PatientInterface';
 import proofAPI from '../api/proofAPI';
+import BloodTypeVerification from '../components/BloodTypeVerification';
 
 const PatientDashboard = ({ account, provider, signer, isConnected }) => {
   const navigate = useNavigate();
@@ -455,133 +456,114 @@ const PatientDashboard = ({ account, provider, signer, isConnected }) => {
         </Button>
       </Paper>
 
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" gutterBottom>
-          <NewReleasesIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          대기 중인 요청
-        </Typography>
-        <Paper elevation={2}>
-          {pendingRequests.length === 0 ? (
-            <Box sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="body1" color="text.secondary">
-                대기 중인 요청이 없습니다.
-              </Typography>
-            </Box>
-          ) : (
-            <List>
-              {pendingRequests.map((request, index) => (
-                <React.Fragment key={request.requestId}>
-                  <ListItem
-                    secondaryAction={
-                      <Box>
-                        <Button
-                          variant="contained"
-                          color="success"
-                          size="small"
-                          onClick={() => handleRequestAction(request.requestId, true)}
-                          disabled={loading}
-                          sx={{ mr: 1 }}
-                        >
-                          <CheckCircleIcon sx={{ mr: 0.5 }} />
-                          승인
-                        </Button>
-                        <Button
-                          variant="contained"
-                          color="error"
-                          size="small"
-                          onClick={() => handleRequestAction(request.requestId, false)}
-                          disabled={loading}
-                        >
-                          <CancelIcon sx={{ mr: 0.5 }} />
-                          거부
-                        </Button>
-                      </Box>
-                    }
-                  >
-                    <ListItemAvatar>
-                      <Avatar>
-                        <PersonIcon />
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={`요청 ID: ${request.requestId.substring(0, 10)}...`}
-                      secondary={
-                        <>
-                          <Typography component="span" variant="body2">
-                            요청자: {shortenAddress(request.requester)}
-                          </Typography>
-                          <br />
-                          <Typography component="span" variant="body2">
-                            요청 시간: {formatDate(request.requestTime)}
-                          </Typography>
-                        </>
-                      }
-                    />
-                  </ListItem>
-                  {index < pendingRequests.length - 1 && <Divider />}
-                </React.Fragment>
-              ))}
-            </List>
-          )}
-        </Paper>
-      </Box>
+      <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <NewReleasesIcon sx={{ mr: 1 }} />
+          <Typography variant="h6">대기 중인 요청</Typography>
+        </Box>
 
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" gutterBottom>
-          <HistoryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          승인된 요청 내역
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+            <CircularProgress />
+          </Box>
+        ) : pendingRequests.length === 0 ? (
+          <Typography color="text.secondary">
+            현재 대기 중인 요청이 없습니다.
+          </Typography>
+        ) : (
+          <List>
+            {pendingRequests.map((request) => (
+              <RequestItem 
+                key={request.requestId}
+                request={request}
+                onApprove={() => handleRequestAction(request.requestId, true)}
+                onDeny={() => handleRequestAction(request.requestId, false)}
+              />
+            ))}
+          </List>
+        )}
+      </Paper>
+
+      {/* 혈액형 ZK 검증 섹션 */}
+      <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <VerifiedUserIcon sx={{ mr: 1 }} />
+          <Typography variant="h6">혈액형 ZK 검증</Typography>
+        </Box>
+        
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          요청을 승인하고 ZK 증명을 생성하여 실제 혈액형 정보를 노출하지 않고 검증할 수 있습니다.
         </Typography>
-        <Paper elevation={2}>
-          {approvedRequests.length === 0 ? (
-            <Box sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="body1" color="text.secondary">
-                승인된 요청이 없습니다.
-              </Typography>
-            </Box>
-          ) : (
-            <List>
-              {approvedRequests.map((request, index) => (
-                <React.Fragment key={request.requestId}>
-                  <ListItem>
-                    <ListItemAvatar>
-                      <Avatar sx={{ bgcolor: 'success.main' }}>
-                        <CheckCircleIcon />
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={
-                        <>
-                          <Typography component="span" variant="body1">
-                            요청 ID: {request.requestId.substring(0, 10)}...
-                          </Typography>
-                          <Chip
-                            size="small"
-                            color="success"
-                            label="승인됨"
-                            sx={{ ml: 1 }}
-                          />
-                        </>
-                      }
-                      secondary={
-                        <>
-                          <Typography component="span" variant="body2">
-                            요청자: {shortenAddress(request.requester)}
-                          </Typography>
-                          <br />
-                          <Typography component="span" variant="body2">
-                            승인 시간: {formatDate(request.approvalTime)}
-                          </Typography>
-                        </>
-                      }
-                    />
-                  </ListItem>
-                  {index < approvedRequests.length - 1 && <Divider />}
-                </React.Fragment>
-              ))}
-            </List>
-          )}
-        </Paper>
-      </Box>
+        
+        {/* BloodTypeVerification 컴포넌트 - 환자 모드 */}
+        <BloodTypeVerification 
+          patientAddress={account || ''}
+          requesterAddress={''}
+          isPatient={true}
+          onComplete={(result) => {
+            console.log('혈액형 검증 완료:', result);
+            // 요청 목록 새로고침
+            loadRequests();
+            loadProofs();
+          }}
+        />
+      </Paper>
+      
+      <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <HistoryIcon sx={{ mr: 1 }} />
+          <Typography variant="h6">승인된 요청</Typography>
+        </Box>
+
+        {approvedRequests.length === 0 ? (
+          <Box sx={{ p: 3, textAlign: 'center' }}>
+            <Typography variant="body1" color="text.secondary">
+              승인된 요청이 없습니다.
+            </Typography>
+          </Box>
+        ) : (
+          <List>
+            {approvedRequests.map((request, index) => (
+              <React.Fragment key={request.requestId}>
+                <ListItem>
+                  <ListItemAvatar>
+                    <Avatar sx={{ bgcolor: 'success.main' }}>
+                      <CheckCircleIcon />
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={
+                      <>
+                        <Typography component="span" variant="body1">
+                          요청 ID: {request.requestId.substring(0, 10)}...
+                        </Typography>
+                        <Chip
+                          size="small"
+                          color="success"
+                          label="승인됨"
+                          sx={{ ml: 1 }}
+                        />
+                      </>
+                    }
+                    secondary={
+                      <>
+                        <Typography component="span" variant="body2">
+                          요청자: {shortenAddress(request.requester)}
+                        </Typography>
+                        <br />
+                        <Typography component="span" variant="body2">
+                          승인 시간: {formatDate(request.approvalTime)}
+                        </Typography>
+                      </>
+                    }
+                  />
+                </ListItem>
+                {index < approvedRequests.length - 1 && <Divider />}
+              </React.Fragment>
+            ))}
+          </List>
+        )}
+      </Paper>
 
       {/* 증명 기록 섹션 추가 */}
       <Box sx={{ mb: 4 }}>

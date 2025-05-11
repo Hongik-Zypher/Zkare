@@ -131,7 +131,7 @@ class RequesterInterface {
   }
   
   /**
-   * 전체 프로세스 실행 (요청 -> 승인 확인 -> 증명 생성 -> 제출)
+   * 전체 프로세스 실행 (요청 -> 승인 확인 -> 증명 검증)
    * @param {string} patientAddress - 환자 이더리움 주소
    * @param {string} recordHash - 의료 기록 해시
    * @param {Signer} signer - 서명자 (요청자 지갑)
@@ -150,45 +150,48 @@ class RequesterInterface {
       console.log(`요청 ID: ${requestId} 생성됨`);
       
       // 2. 승인 대기 (폴링)
-      console.log("환자 승인 대기 중...");
+      console.log("환자 승인 및 증명 생성 대기 중...");
       
       return new Promise((resolve, reject) => {
         let isResolved = false;
         
-        const checkApproval = async () => {
+        const checkApprovalAndProof = async () => {
           if (isResolved) return;
           
           try {
+            // 2.1 컨트랙트에서 승인 상태 확인
             const status = await this.checkApprovalStatus(patientAddress, requestId);
             
             if (status.isApproved) {
-              isResolved = true;
-              console.log("승인 완료! ZK 증명 생성 중...");
+              console.log("승인 확인됨. 증명 검증 확인 중...");
               
               try {
-                // 3. ZK 증명 생성
-                const proofData = await this.requestZkProof(patientAddress, requestId, requesterAddress);
-                console.log("ZK 증명 생성 완료");
+                // 2.2 이벤트 로그에서 환자가 생성한 증명이 있는지 확인
+                const proofEvents = await this.checkProofEvents(patientAddress, requesterAddress);
                 
-                // 4. 증명 제출
-                const preparedData = await this.submitProof(proofData, signer);
-                console.log("증명 제출 데이터 준비 완료");
-                
-                // 참고: 실제 트랜잭션 제출은 외부에서 wallet.js를 사용해야 함
-                // 여기서는 외부에서 처리해야 함을 알려주기만 함
-                resolve({
-                  success: true,
-                  requestId,
-                  proof: preparedData.proof,
-                  publicInputs: preparedData.publicInputs,
-                  preparationComplete: true
-                });
+                if (proofEvents && proofEvents.length > 0) {
+                  isResolved = true;
+                  console.log("환자가 생성한 증명 확인됨");
+                  
+                  // 3. 증명 검증
+                  resolve({
+                    success: true,
+                    requestId,
+                    message: "환자가 증명을 생성하여 검증이 완료되었습니다.",
+                    events: proofEvents
+                  });
+                } else {
+                  // 아직 증명이 생성되지 않음, 다시 체크
+                  console.log("아직 증명이 생성되지 않음, 계속 대기 중...");
+                  setTimeout(checkApprovalAndProof, pollInterval);
+                }
               } catch (error) {
-                reject(error);
+                console.error("증명 확인 오류:", error);
+                setTimeout(checkApprovalAndProof, pollInterval);
               }
             } else {
               // 아직 승인되지 않음, 다시 체크
-              setTimeout(checkApproval, pollInterval);
+              setTimeout(checkApprovalAndProof, pollInterval);
             }
           } catch (error) {
             isResolved = true;
@@ -197,19 +200,70 @@ class RequesterInterface {
         };
         
         // 첫 번째 확인 시작
-        checkApproval();
+        checkApprovalAndProof();
         
         // 타임아웃 설정
         setTimeout(() => {
           if (!isResolved) {
             isResolved = true;
-            reject(new Error("승인 대기 타임아웃"));
+            reject(new Error("승인 및 증명 대기 타임아웃"));
           }
         }, timeout);
       });
     } catch (error) {
-      console.error("접근 프로세스 실패:", error);
+      console.error("접근 처리 오류:", error);
       throw error;
+    }
+  }
+  
+  /**
+   * 환자가 생성한 증명 이벤트 확인
+   * @param {string} patientAddress - 환자 이더리움 주소
+   * @param {string} requesterAddress - 요청자 이더리움 주소
+   * @returns {Promise<Array>} 증명 이벤트 목록
+   */
+  async checkProofEvents(patientAddress, requesterAddress) {
+    try {
+      // VerificationResult 이벤트 필터 생성
+      const filter = {
+        address: this.verifierContract.target,
+        topics: [
+          ethers.id("VerificationResult(address,address,string,bool)"),
+          ethers.zeroPadValue(ethers.getAddress(requesterAddress), 32),
+          ethers.zeroPadValue(ethers.getAddress(patientAddress), 32)
+        ]
+      };
+      
+      // 최근 이벤트 조회 (최근 1000 블록)
+      const currentBlock = await this.provider.getBlockNumber();
+      const fromBlock = Math.max(0, currentBlock - 1000);
+      
+      const logs = await this.provider.getLogs({
+        ...filter,
+        fromBlock
+      });
+      
+      // 이벤트 파싱
+      return logs.map(log => {
+        const parsedLog = this.verifierContract.interface.parseLog({
+          topics: log.topics,
+          data: log.data
+        });
+        
+        if (!parsedLog) return null;
+        
+        return {
+          requester: parsedLog.args[0],
+          patient: parsedLog.args[1],
+          verificationType: parsedLog.args[2],
+          isValid: parsedLog.args[3],
+          blockNumber: log.blockNumber,
+          transactionHash: log.transactionHash
+        };
+      }).filter(event => event !== null);
+    } catch (error) {
+      console.error("증명 이벤트 확인 오류:", error);
+      return [];
     }
   }
   

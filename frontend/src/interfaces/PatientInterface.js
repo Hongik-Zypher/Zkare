@@ -88,6 +88,27 @@ class PatientInterface {
     const tx = await contractWithSigner.approveAccess(requestId);
     const receipt = await tx.wait();
     
+    // 승인 후 자동으로 ZK 증명 생성 및 제출
+    try {
+      const patientAddress = await signer.getAddress();
+      const requestDetails = await this.verifierContract.getRequestDetails(requestId);
+      
+      // 요청 정보가 유효한지 확인
+      if (requestDetails && requestDetails.requester) {
+        // 증명 생성 및 제출
+        await this.generateAndSubmitProof(
+          requestId,
+          patientAddress, 
+          requestDetails.requester,
+          requestDetails.recordHash,
+          signer
+        );
+      }
+    } catch (proofError) {
+      console.error("증명 생성 및 제출 오류 (승인 후):", proofError);
+      // 승인은 성공했으므로 오류를 무시하고 성공 반환
+    }
+    
     return {
       success: true,
       txHash: receipt.transactionHash
@@ -162,6 +183,147 @@ class PatientInterface {
     } catch (error) {
       console.error('승인된 요청 조회 오류:', error);
       return [];
+    }
+  }
+
+  /**
+   * 증명 생성 및 제출
+   * @param {string} requestId - 요청 ID
+   * @param {string} patientAddress - 환자 주소
+   * @param {string} requesterAddress - 요청자 주소
+   * @param {string} recordHash - 기록 해시
+   * @param {Signer} signer - 서명자 (환자 지갑)
+   * @returns {Promise<object>} 트랜잭션 결과
+   */
+  async generateAndSubmitProof(requestId, patientAddress, requesterAddress, recordHash, signer) {
+    try {
+      // 1. 환자 데이터 가져오기
+      const patientData = await this.getPatientData(patientAddress);
+      
+      // 2. 증명 생성에 필요한 입력값 구성
+      const inputs = {
+        requestId,
+        patientAddress,
+        requesterAddress,
+        recordHash,
+        patientData
+      };
+      
+      // 3. ZK 증명 생성 (백엔드 API 호출)
+      const proofData = await this.requestZkProof(inputs);
+      
+      // 4. 증명 제출
+      return await this.submitProof(patientAddress, requestId, proofData, signer);
+    } catch (error) {
+      console.error("증명 생성 및 제출 오류:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * 환자 데이터 가져오기
+   * @param {string} patientAddress - 환자 주소
+   * @returns {Promise<object>} 환자 데이터
+   */
+  async getPatientData(patientAddress) {
+    try {
+      // 혈액형 데이터 가져오기
+      const bloodTypeCode = await this.verifierContract.getPatientData(patientAddress, "bloodType");
+      
+      // 필요한 다른 데이터도 가져올 수 있음
+      return {
+        bloodTypeCode: Number(bloodTypeCode)
+        // 필요한 다른 데이터 추가
+      };
+    } catch (error) {
+      console.error("환자 데이터 가져오기 오류:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * ZK 증명 생성 요청 (백엔드 API 호출)
+   * @param {object} inputs - 증명 입력값
+   * @returns {Promise<object>} 생성된 증명 데이터
+   */
+  async requestZkProof(inputs) {
+    try {
+      // 백엔드에 증명 생성 요청 (실제 구현에서는 fetch나 axios 사용)
+      const response = await fetch("/api/proofs/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(inputs)
+      });
+      
+      if (!response.ok) {
+        throw new Error("증명 생성 요청 실패");
+      }
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.message || "증명 생성 실패");
+      }
+      
+      return data.proofData;
+    } catch (error) {
+      console.error("증명 생성 요청 오류:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * 생성된 증명 제출
+   * @param {string} patientAddress - 환자 주소
+   * @param {string} requestId - 요청 ID
+   * @param {object} proofData - 증명 데이터
+   * @param {Signer} signer - 서명자 (환자 지갑)
+   * @returns {Promise<object>} 트랜잭션 결과
+   */
+  async submitProof(patientAddress, requestId, proofData, signer) {
+    try {
+      const contractWithSigner = this.verifierContract.connect(signer);
+      
+      // 증명 데이터 준비
+      const { proof, publicSignals } = proofData;
+      
+      // 컨트랙트에 맞게 변환
+      const a = [proof.pi_a[0], proof.pi_a[1]];
+      const b = [
+        [proof.pi_b[0][0], proof.pi_b[0][1]],
+        [proof.pi_b[1][0], proof.pi_b[1][1]]
+      ];
+      const c = [proof.pi_c[0], proof.pi_c[1]];
+      
+      // 증명 제출
+      const tx = await contractWithSigner.submitProof(
+        patientAddress,
+        requestId,
+        a,
+        b,
+        c,
+        publicSignals
+      );
+      
+      const receipt = await tx.wait();
+      
+      // 결과 이벤트 확인
+      const event = receipt.logs.find(
+        log => log.fragment && log.fragment.name === "VerificationResult"
+      );
+      
+      const isValid = event ? event.args.isValid : false;
+      
+      return {
+        success: true,
+        txHash: receipt.transactionHash,
+        isValid
+      };
+    } catch (error) {
+      console.error("증명 제출 오류:", error);
+      throw error;
     }
   }
 }

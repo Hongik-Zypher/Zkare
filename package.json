@@ -18,7 +18,9 @@
     "deploy:viewer": "npx hardhat run scripts/deploy_contracts.js --network localhost viewer",
     "setup:env": "node scripts/setup_env.js",
     "build:circuits": "cd circuits && node build.js",
-    "postbuild:circuits": "node scripts/copy-circuit-files.js"
+    "postbuild:circuits": "node scripts/copy-circuit-files.js",
+    "start:all": "node scripts/start_all.js",
+    "start:all:verbose": "ZKARE_VERBOSE=true node scripts/start_all.js"
   },
   "keywords": [
     "zk",

@@ -531,21 +531,28 @@ const RequesterDashboard = ({ account, provider, signer, isConnected }) => {
         )}
       </Paper>
       
+      {/* 혈액형 검증 컴포넌트 (새로운 플로우) */}
       <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
-        <Typography variant="h5" gutterBottom>
-          <VerifiedUserIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          특정 속성 검증
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          환자의 실제 의료 데이터를 공개하지 않고도 특정 조건을 만족하는지 검증합니다.
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <VerifiedUserIcon sx={{ mr: 1 }} />
+          <Typography variant="h6">혈액형 ZK 검증</Typography>
+        </Box>
+        
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          환자의 혈액형을 영지식 증명(ZK)을 통해 검증합니다. 
+          환자의 실제 혈액형 정보는 공개되지 않으면서 귀하가 추측한 혈액형이 맞는지만 검증됩니다.
         </Typography>
         
+        {/* 새로운 플로우를 사용하는 혈액형 검증 컴포넌트 */}
         <BloodTypeVerification 
-          patientAddress={patientAddress || ''} 
+          patientAddress={patientAddress || ''}
           requesterAddress={account || ''}
+          isPatient={false}
+          onComplete={(result) => {
+            console.log('혈액형 검증 완료:', result);
+            loadProofs(); // 증명 목록 새로고침
+          }}
         />
-        
-        {/* 추가 속성 검증 컴포넌트들은 여기에 추가할 수 있습니다 */}
       </Paper>
 
       <Box sx={{ mb: 4 }}>

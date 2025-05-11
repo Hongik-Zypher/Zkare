@@ -474,6 +474,95 @@ class ZkProofService {
       }
     ];
   }
+
+  /**
+   * 요청 승인 상태 확인
+   * @param {string} patientAddress - 환자 이더리움 주소
+   * @param {string} requestId - 요청 ID
+   * @returns {Promise<{isApproved: boolean, approvalTime: number}>} 승인 상태 정보
+   */
+  async checkApprovalStatus(patientAddress, requestId) {
+    try {
+      // 1. 컨트랙트에서 승인 상태 확인
+      const request = await this.verifierContract.getRequestDetails(
+        patientAddress,
+        requestId
+      );
+      
+      return {
+        isApproved: !request.isPending && request.isApproved,
+        approvalTime: 0 // 실제 구현에서는 승인 시간 반환
+      };
+    } catch (error) {
+      console.error('승인 상태 확인 오류:', error);
+      throw new Error(`승인 상태 확인 실패: ${error.message}`);
+    }
+  }
+
+  /**
+   * 증명 상태 확인
+   * @param {string} nullifierHash - 증명 nullifier 해시
+   * @returns {Promise<object>} 증명 상태 정보
+   */
+  async getProofStatus(nullifierHash) {
+    try {
+      // 실제 구현에서는 DB나 블록체인에서 상태 조회
+      // 여기서는 더미 데이터 반환
+      return {
+        exists: true,
+        verified: true,
+        timestamp: Date.now() - 600000 // 10분 전
+      };
+    } catch (error) {
+      console.error('증명 상태 조회 오류:', error);
+      throw new Error(`증명 상태 조회 실패: ${error.message}`);
+    }
+  }
+
+  /**
+   * 증명 검증을 위한 트랜잭션 데이터 준비
+   * @param {object} proof - 증명 객체
+   * @param {object} publicInputs - 공개 입력값
+   * @returns {Promise<object>} 트랜잭션 데이터
+   */
+  async prepareVerifyTransaction(proof, publicInputs) {
+    try {
+      // 1. 컨트랙트 인터페이스 준비
+      const verifierInterface = this.verifierContract.interface;
+      
+      // 2. 증명 데이터 변환
+      const a = [proof.pi_a[0], proof.pi_a[1]];
+      const b = [
+        [proof.pi_b[0][0], proof.pi_b[0][1]],
+        [proof.pi_b[1][0], proof.pi_b[1][1]]
+      ];
+      const c = [proof.pi_c[0], proof.pi_c[1]];
+      
+      // 3. 공개 입력값 준비
+      const patientAddress = publicInputs.patientAddress;
+      const requestId = publicInputs.requestId || 0;
+      
+      // 4. 트랜잭션 데이터 인코딩
+      const data = verifierInterface.encodeFunctionData('submitProof', [
+        patientAddress,
+        requestId,
+        a,
+        b,
+        c,
+        Object.values(publicInputs)
+      ]);
+      
+      // 5. 트랜잭션 데이터 반환
+      return {
+        to: this.verifierContract.target,
+        data,
+        value: '0'
+      };
+    } catch (error) {
+      console.error('트랜잭션 데이터 준비 오류:', error);
+      throw new Error(`트랜잭션 데이터 준비 실패: ${error.message}`);
+    }
+  }
 }
 
 module.exports = ZkProofService; 

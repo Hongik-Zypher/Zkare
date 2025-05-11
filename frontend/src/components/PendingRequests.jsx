@@ -5,6 +5,7 @@ import {
   generateBloodTypeProof,
   getPatientData,
   submitProof,
+  getCurrentAccount,
 } from "../utils/medicalVerificationService";
 import {
   Box,
@@ -79,11 +80,15 @@ const PendingRequests = () => {
 
         // 각 요청 유형에 대한 실제 데이터 로드
         const dataMap = {};
+        // 현재 로그인한 사용자(환자) 주소 가져오기
+        const patientAddress = await getCurrentAccount();
+        
         for (const request of result.requests) {
           if (request.verificationType === "bloodType") {
             try {
+              // 환자 본인의 데이터 가져오기 (request.requester가 아님)
               const dataResult = await getPatientData(
-                request.requester,
+                patientAddress, // 환자 본인 주소 사용
                 "bloodType"
               );
               if (dataResult.success) {
@@ -121,142 +126,132 @@ const PendingRequests = () => {
     }
   };
 
-  // 요청 승인 처리
-  const handleApprove = async (requestId) => {
-    await handleResponse(requestId, true);
-  };
-
-  // 요청 거부 처리
-  const handleReject = async (requestId) => {
-    await handleResponse(requestId, false);
-  };
-
   // 요청 응답 처리 (승인/거부)
-  const handleResponse = async (requestId, approved) => {
-    setStatusMessages((prev) => ({
-      ...prev,
-      [requestId]: { text: "처리 중...", severity: "info" },
-    }));
-
+  const handleResponse = async (requestId, isApprove) => {
     try {
-      const result = await respondToVerification(requestId, approved);
+      setIsLoading(true);
+      setGlobalAlert(null);
 
-      if (result.success) {
-        // 승인된 경우 증명 자동 생성 및 제출
-        if (approved) {
-          await processApprovedRequest(requestId);
-        } else {
-          setStatusMessages((prev) => ({
-            ...prev,
-            [requestId]: { text: "요청을 거부했습니다.", severity: "warning" },
-          }));
-        }
-
-        // 목록 다시 로드
-        fetchPendingRequests();
-      } else {
-        setStatusMessages((prev) => ({
-          ...prev,
-          [requestId]: { text: result.message, severity: "error" },
-        }));
-      }
-    } catch (error) {
-      console.error("응답 처리 오류:", error);
-      setStatusMessages((prev) => ({
-        ...prev,
-        [requestId]: {
-          text: "요청 처리 중 오류가 발생했습니다.",
-          severity: "error",
-        },
-      }));
-    }
-  };
-
-  // 승인된 요청에 대한 증명 생성 및 제출 처리
-  const processApprovedRequest = async (requestId) => {
-    try {
       const request = pendingRequests.find(
         (req) => req.requestId === requestId
       );
-      if (!request) return;
-
-      setStatusMessages((prev) => ({
-        ...prev,
-        [requestId]: { text: "증명 생성 중...", severity: "info" },
-      }));
-
-      if (request.verificationType === "bloodType") {
-        const actualBloodType = actualData[`bloodType_${requestId}`] || 0;
-
-        // 증명 생성
-        const proofResult = await generateBloodTypeProof(
-          actualBloodType,
-          request.requestedValue
-        );
-
-        if (!proofResult.success) {
-          setStatusMessages((prev) => ({
-            ...prev,
-            [requestId]: {
-              text: "증명 생성에 실패했습니다.",
-              severity: "error",
-            },
-          }));
-          setResultDialog({
-            open: true,
-            title: "증명 생성 실패",
-            message: "증명 생성에 실패했습니다. 다시 시도해 주세요.",
-            severity: "error",
-          });
-          return;
-        }
-
-        setStatusMessages((prev) => ({
-          ...prev,
-          [requestId]: { text: "증명 제출 중...", severity: "info" },
-        }));
-
-        // 증명 제출
-        const submitResult = await submitProof(
-          request.requester,
-          requestId,
-          proofResult.proofData
-        );
-
-        // 최종 결과 메시지 구성 및 다이얼로그로 표시
-        const resultMessage = submitResult.message;
-        const isSuccess = submitResult.success && proofResult.proofData.isMatch;
-        const displayMessage = isSuccess
-          ? `증명 성공! 혈액형 ${getBloodTypeName(
-              request.requestedValue
-            )}이(가) 확인되었습니다.`
-          : `증명 실패: 혈액형이 일치하지 않거나 검증에 문제가 있습니다.`;
-
-        setStatusMessages((prev) => ({
-          ...prev,
-          [requestId]: {
-            text: submitResult.message,
-            severity: submitResult.success ? "success" : "error",
-          },
-        }));
-
-        // 다이얼로그로 결과 표시
-        setResultDialog({
-          open: true,
-          title: isSuccess ? "증명 성공!" : "증명 실패",
-          message: displayMessage,
-          severity: isSuccess ? "success" : "error",
-        });
+      if (!request) {
+        throw new Error("요청을 찾을 수 없습니다.");
       }
-    } catch (error) {
-      console.error("증명 처리 오류:", error);
+
       setStatusMessages((prev) => ({
         ...prev,
         [requestId]: {
-          text: "증명 처리 중 오류가 발생했습니다.",
-          severity: "error",
+          text: isApprove ? "승인 중..." : "거부 중...",
+          severity: "info",
         },
       }));
+
+      const response = isApprove
+        ? await respondToVerification(requestId, true)
+        : await respondToVerification(requestId, false);
+
+      if (!response.success) {
+        throw new Error(response.message || "요청 처리 중 오류가 발생했습니다.");
+      }
+
+      // 승인된 경우에만 증명 생성 및 제출 진행
+      if (isApprove) {
+        setStatusMessages((prev) => ({
+          ...prev,
+          [requestId]: { text: "증명 생성 중...", severity: "info" },
+        }));
+        
+        // 요청 유형에 따른 처리
+        if (request.verificationType === "bloodType") {
+          try {
+            // 환자 데이터 가져오기
+            const bloodTypeCode = actualData[`bloodType_${requestId}`] || 0;
+            
+            if (bloodTypeCode <= 0) {
+              throw new Error("환자 혈액형 데이터를 찾을 수 없습니다.");
+            }
+            
+            // 증명 생성
+            const proofResult = await generateBloodTypeProof(
+              bloodTypeCode, // 실제 혈액형
+              request.requestedValue // 요청자가 추측한 혈액형
+            );
+            
+            if (!proofResult.success) {
+              throw new Error(proofResult.message || "증명 생성에 실패했습니다.");
+            }
+            
+            setStatusMessages((prev) => ({
+              ...prev,
+              [requestId]: { text: "증명 제출 중...", severity: "info" },
+            }));
+            
+            // 증명 제출
+            const submitResult = await submitProof(
+              await getCurrentAccount(), // 환자 주소
+              requestId, 
+              proofResult.proofData
+            );
+            
+            if (!submitResult.success) {
+              throw new Error(submitResult.message || "증명 제출에 실패했습니다.");
+            }
+            
+            // 증명 생성 및 제출 결과 설정
+            setResultDialog({
+              open: true,
+              title: "요청 승인 및 증명 완료",
+              message: "요청을 승인하고 ZK 증명이 성공적으로 생성되었습니다. 요청자가 이제 결과를 확인할 수 있습니다.",
+              severity: "success",
+            });
+          } catch (proofError) {
+            console.error("증명 생성 오류:", proofError);
+            // 증명 생성 실패 메시지 표시 (하지만 승인은 이미 완료됨)
+            setResultDialog({
+              open: true,
+              title: "요청 승인 완료 (증명 생성 실패)",
+              message: `요청은 승인되었지만 증명 생성에 실패했습니다: ${proofError.message}`,
+              severity: "warning",
+            });
+          }
+        } else {
+          // 다른 유형의 요청 처리
+          setResultDialog({
+            open: true,
+            title: "요청 승인 완료",
+            message: "요청이 성공적으로 승인되었습니다.",
+            severity: "success",
+          });
+        }
+      } else {
+        // 요청 거부 처리
+        setResultDialog({
+          open: true,
+          title: "요청 거부 완료",
+          message: "요청이 성공적으로 거부되었습니다.",
+          severity: "info",
+        });
+      }
+
+      // 요청 목록 새로고침
+      await fetchPendingRequests();
+    } catch (error) {
+      console.error("요청 처리 오류:", error);
+      setGlobalAlert({
+        severity: "error",
+        message: error.message || "요청 처리 중 오류가 발생했습니다.",
+      });
+    } finally {
+      setIsLoading(false);
+      // 상태 메시지 초기화 (나중에 모든 요청 처리 후)
+      setTimeout(() => {
+        setStatusMessages((prev) => {
+          const newMessages = { ...prev };
+          delete newMessages[requestId];
+          return newMessages;
+        });
+      }, 3000);
     }
   };
 
@@ -389,7 +384,7 @@ const PendingRequests = () => {
                         variant="contained"
                         color="success"
                         startIcon={<CheckCircleIcon />}
-                        onClick={() => handleApprove(request.requestId)}
+                        onClick={() => handleResponse(request.requestId, true)}
                         sx={{ mr: 1 }}
                       >
                         승인
@@ -398,7 +393,7 @@ const PendingRequests = () => {
                         variant="contained"
                         color="error"
                         startIcon={<CancelIcon />}
-                        onClick={() => handleReject(request.requestId)}
+                        onClick={() => handleResponse(request.requestId, false)}
                       >
                         거부
                       </Button>
