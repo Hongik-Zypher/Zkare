@@ -1,460 +1,677 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Container,
   Typography,
   Box,
-  Button,
-  Grid,
-  Paper,
-  Divider,
   TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
+  Button,
   Card,
   CardContent,
-  CardActions,
-  Snackbar,
+  Grid,
   Alert,
   CircularProgress,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  MenuItem,
   List,
   ListItem,
   ListItemText,
-  Chip
-} from '@mui/material';
-import { useNavigate } from 'react-router-dom';
-import PersonAddIcon from '@mui/icons-material/PersonAdd';
-import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
-import PersonIcon from '@mui/icons-material/Person';
-import MedicalInformationIcon from '@mui/icons-material/MedicalInformation';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { 
-  initVerificationService, 
-  getCurrentAccount,
-  registerDoctor,
-  registerPatient,
-  detectMetaMask,
-  getDoctorsList,
-  getPatientsList
-} from '../utils/medicalVerificationService';
-
-// 혈액형 코드와 이름 매핑
-const BLOOD_TYPES = [
-  { code: 0, name: '미등록' },
-  { code: 1, name: 'A형' },
-  { code: 2, name: 'B형' },
-  { code: 3, name: 'AB형' },
-  { code: 4, name: 'O형' }
-];
-
-// 혈액형 코드로 이름 가져오기
-const getBloodTypeName = (code) => {
-  const bloodType = BLOOD_TYPES.find(bt => bt.code === code);
-  return bloodType ? bloodType.name : '미등록';
-};
+  ListItemSecondaryAction,
+} from "@mui/material";
+import { ethers } from "ethers";
+import {
+  connectWallet,
+  isDoctor,
+  addMedicalRecord,
+  getMedicalRecord,
+  addDoctor,
+  requestAccess,
+  grantAccess,
+  hasAccess,
+  getAccessRequests,
+  revokeAccess,
+} from "../utils/contracts";
 
 const Home = () => {
-  const navigate = useNavigate();
-  const [userAddress, setUserAddress] = useState('');
-  const [alertOpen, setAlertOpen] = useState(false);
-  const [alertMessage, setAlertMessage] = useState('');
-  const [alertSeverity, setAlertSeverity] = useState('success');
-  const [isWalletConnected, setIsWalletConnected] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [doctors, setDoctors] = useState([]);
-  const [patients, setPatients] = useState([]);
-  const [loadingDoctors, setLoadingDoctors] = useState(false);
-  const [loadingPatients, setLoadingPatients] = useState(false);
+  const [account, setAccount] = useState("");
+  const [isUserDoctor, setIsUserDoctor] = useState(false);
+  const [patientAddress, setPatientAddress] = useState("");
+  const [recordId, setRecordId] = useState("");
+  const [record, setRecord] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [alert, setAlert] = useState({
+    open: false,
+    message: "",
+    severity: "info",
+  });
+  const [newDoctorAddress, setNewDoctorAddress] = useState("");
+  const [addRecordDialogOpen, setAddRecordDialogOpen] = useState(false);
+  const [accessRequests, setAccessRequests] = useState([]);
+  const [accessDialogOpen, setAccessDialogOpen] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [accessDuration, setAccessDuration] = useState(3600); // 1시간
+  const [newRecord, setNewRecord] = useState({
+    diagnosis: "",
+    prescription: "",
+    notes: "",
+    bloodType: "",
+    height: "",
+    weight: "",
+    allergies: "",
+  });
+  const [signatureStatus, setSignatureStatus] = useState(null);
 
-  useEffect(() => {
-    const init = async () => {
-      const hasMM = await detectMetaMask();
-      setIsWalletConnected(hasMM);
-
-      if (hasMM) {
-        try {
-          await initVerificationService();
-          const currentAccount = await getCurrentAccount();
-          setUserAddress(currentAccount);
-          
-          // 의사 및 환자 목록 로드
-          loadDoctorsList();
-          loadPatientsList();
-        } catch (error) {
-          console.error(error);
-          setAlertMessage('블록체인 연결 중 오류가 발생했습니다: ' + error.message);
-          setAlertOpen(true);
-        }
-      }
-    };
-
-    init();
-  }, []);
-
-  const connectWallet = async () => {
+  // 지갑 연결 및 의사 여부 확인
+  const handleConnectWallet = async () => {
     try {
-      await initVerificationService();
-      const account = await getCurrentAccount();
-      setUserAddress(account);
-      setIsWalletConnected(true);
-      showAlert('지갑이 연결되었습니다.', 'success');
-    } catch (error) {
-      console.error('지갑 연결 오류:', error);
-      showAlert('지갑 연결에 실패했습니다. MetaMask가 설치되어 있는지 확인하세요.', 'error');
-    }
-  };
+      setLoading(true);
+      const account = await connectWallet();
+      setAccount(account);
 
-  const handleRegisterAsDoctor = async () => {
-    if (!isWalletConnected) {
-      showAlert('먼저 지갑을 연결해주세요.', 'warning');
-      return;
-    }
+      // 의사 여부 확인
+      const isUserDoctor = await isDoctor(account);
+      setIsUserDoctor(isUserDoctor);
 
-    setIsLoading(true);
-    try {
-      const result = await registerDoctor(userAddress);
-      if (result.success) {
-        showAlert(result.message, 'success');
-      } else {
-        showAlert(result.message, 'error');
-      }
+      setAlert({
+        open: true,
+        message: "지갑이 성공적으로 연결되었습니다.",
+        severity: "success",
+      });
     } catch (error) {
-      console.error('의사 등록 오류:', error);
-      showAlert('의사 계정 등록에 실패했습니다.', 'error');
+      console.error("지갑 연결 중 오류:", error);
+      setAlert({
+        open: true,
+        message: `지갑 연결에 실패했습니다: ${error.message}`,
+        severity: "error",
+      });
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleRegisterAsPatient = async () => {
-    if (!isWalletConnected) {
-      showAlert('먼저 지갑을 연결해주세요.', 'warning');
-      return;
-    }
+  // 의료 기록 추가 다이얼로그 열기
+  const handleOpenAddRecordDialog = () => {
+    setAddRecordDialogOpen(true);
+  };
 
-    setIsLoading(true);
+  // 의료 기록 추가 다이얼로그 닫기
+  const handleCloseAddRecordDialog = () => {
+    setAddRecordDialogOpen(false);
+    setNewRecord({
+      diagnosis: "",
+      prescription: "",
+      notes: "",
+      bloodType: "",
+      height: "",
+      weight: "",
+      allergies: "",
+    });
+  };
+
+  // 의료 기록 추가
+  const handleAddRecord = async () => {
     try {
-      const result = await registerPatient(userAddress);
-      if (result.success) {
-        showAlert(result.message, 'success');
+      setLoading(true);
+      const recordData = {
+        patientId: patientAddress,
+        ...newRecord,
+        timestamp: Date.now(),
+      };
+
+      const result = await addMedicalRecord(patientAddress, recordData);
+      setAlert({
+        open: true,
+        message: "의료 기록이 추가되었습니다.",
+        severity: "success",
+      });
+      setPatientAddress("");
+      handleCloseAddRecordDialog();
+    } catch (error) {
+      setError(error.message);
+      setAlert({
+        open: true,
+        message: "의료 기록 추가에 실패했습니다.",
+        severity: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 의료 기록 조회
+  const handleGetRecord = async () => {
+    try {
+      setLoading(true);
+      setSignatureStatus(null);
+      const record = await getMedicalRecord(patientAddress, recordId);
+      setRecord(record);
+      setSignatureStatus({
+        isValid: true,
+        message: "서명이 유효합니다.",
+      });
+      setAlert({
+        open: true,
+        message: "의료 기록을 조회했습니다.",
+        severity: "success",
+      });
+    } catch (error) {
+      setError(error.message);
+      if (error.message.includes("서명 검증")) {
+        setSignatureStatus({
+          isValid: false,
+          message: "서명이 유효하지 않습니다.",
+        });
+      }
+      setAlert({
+        open: true,
+        message: "의료 기록 조회에 실패했습니다.",
+        severity: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 의사 추가
+  const handleAddDoctor = async () => {
+    try {
+      setLoading(true);
+      const tx = await addDoctor(newDoctorAddress);
+      setAlert({
+        open: true,
+        message: "의사가 추가되었습니다.",
+        severity: "success",
+      });
+      setNewDoctorAddress("");
+    } catch (error) {
+      setError(error.message);
+      setAlert({
+        open: true,
+        message: "의사 추가에 실패했습니다.",
+        severity: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 접근 요청 목록 조회
+  const handleGetAccessRequests = async () => {
+    try {
+      setLoading(true);
+      const requests = await getAccessRequests(account);
+      setAccessRequests(requests);
+    } catch (error) {
+      setError(error.message);
+      setAlert({
+        open: true,
+        message: "접근 요청 목록 조회에 실패했습니다.",
+        severity: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 접근 요청
+  const handleRequestAccess = async () => {
+    try {
+      setLoading(true);
+      const result = await requestAccess(patientAddress, recordId);
+      setAlert({
+        open: true,
+        message: "접근 요청이 완료되었습니다.",
+        severity: "success",
+      });
+    } catch (error) {
+      setError(error.message);
+      setAlert({
+        open: true,
+        message: "접근 요청에 실패했습니다.",
+        severity: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 접근 권한 부여
+  const handleGrantAccess = async (request) => {
+    try {
+      setLoading(true);
+      const result = await grantAccess(
+        request.requester,
+        request.recordId,
+        accessDuration,
+        request.requestId
+      );
+      setAlert({
+        open: true,
+        message: "접근 권한이 부여되었습니다.",
+        severity: "success",
+      });
+      handleGetAccessRequests(); // 목록 새로고침
+    } catch (error) {
+      setError(error.message);
+      setAlert({
+        open: true,
+        message: "접근 권한 부여에 실패했습니다.",
+        severity: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 접근 권한 취소
+  const handleRevokeAccess = async (requester, recordId) => {
+    try {
+      setLoading(true);
+      await revokeAccess(requester, recordId);
+      setAlert({
+        open: true,
+        message: "접근 권한이 취소되었습니다.",
+        severity: "success",
+      });
+    } catch (error) {
+      setError(error.message);
+      setAlert({
+        open: true,
+        message: "접근 권한 취소에 실패했습니다.",
+        severity: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 접근 권한 확인
+  const handleCheckAccess = async () => {
+    try {
+      setLoading(true);
+      const access = await hasAccess(account, recordId);
+      if (access.hasAccess) {
+        setAlert({
+          open: true,
+          message: `접근 권한이 있습니다. (만료: ${new Date(
+            access.expiresAt * 1000
+          ).toLocaleString()})`,
+          severity: "success",
+        });
       } else {
-        showAlert(result.message, 'error');
+        setAlert({
+          open: true,
+          message: "접근 권한이 없습니다.",
+          severity: "error",
+        });
       }
     } catch (error) {
-      console.error('환자 등록 오류:', error);
-      showAlert('환자 계정 등록에 실패했습니다.', 'error');
+      setError(error.message);
+      setAlert({
+        open: true,
+        message: "접근 권한 확인에 실패했습니다.",
+        severity: "error",
+      });
     } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const showAlert = (message, severity) => {
-    setAlertMessage(message);
-    setAlertSeverity(severity);
-    setAlertOpen(true);
-  };
-
-  const handleAlertClose = () => {
-    setAlertOpen(false);
-  };
-
-  // 의사 목록 로드 함수
-  const loadDoctorsList = async () => {
-    setLoadingDoctors(true);
-    try {
-      const result = await getDoctorsList();
-      if (result.success) {
-        setDoctors(result.doctors || []);
-      } else {
-        console.warn('의사 목록 로드 실패:', result.message);
-        setDoctors([]);
-        showAlert('의사 목록을 가져오는데 문제가 있습니다: ' + result.message, 'warning');
-      }
-    } catch (error) {
-      console.error('의사 목록 로드 오류:', error);
-      setDoctors([]);
-      showAlert('의사 목록을 가져오는 중 오류가 발생했습니다', 'error');
-    } finally {
-      setLoadingDoctors(false);
-    }
-  };
-
-  // 환자 목록 로드 함수
-  const loadPatientsList = async () => {
-    setLoadingPatients(true);
-    try {
-      const result = await getPatientsList();
-      if (result.success) {
-        setPatients(result.patients || []);
-      } else {
-        console.warn('환자 목록 로드 실패:', result.message);
-        setPatients([]);
-        showAlert('환자 목록을 가져오는데 문제가 있습니다: ' + result.message, 'warning');
-      }
-    } catch (error) {
-      console.error('환자 목록 로드 오류:', error);
-      setPatients([]);
-      showAlert('환자 목록을 가져오는 중 오류가 발생했습니다', 'error');
-    } finally {
-      setLoadingPatients(false);
+      setLoading(false);
     }
   };
 
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ mt: 8, mb: 5, textAlign: 'center' }}>
-        <Typography variant="h2" gutterBottom component="h1" sx={{ fontWeight: 'bold', color: '#2e7d32' }}>
-          ZKare
+    <Container maxWidth="md">
+      <Box sx={{ my: 4 }}>
+        <Typography variant="h4" component="h1" gutterBottom>
+          의료 기록 관리 시스템
         </Typography>
-        <Typography variant="h5" sx={{ mb: 4, color: 'text.secondary' }}>
-          블록체인 기반 의료 정보 영지식 증명 시스템
-        </Typography>
-        
-        {!isWalletConnected ? (
-          <Button 
-            variant="contained" 
-            size="large" 
-            onClick={connectWallet}
-            sx={{ fontSize: '1.1rem', py: 1.5, px: 4, mb: 4 }}
+
+        {!account ? (
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleConnectWallet}
+            disabled={loading}
           >
-            지갑 연결하기
+            {loading ? <CircularProgress size={24} /> : "지갑 연결하기"}
           </Button>
         ) : (
-          <Typography variant="subtitle1" sx={{ mb: 4 }}>
-            연결된 지갑: {userAddress.substring(0, 6)}...{userAddress.substring(userAddress.length - 4)}
-          </Typography>
+          <Box>
+            <Typography variant="body1" gutterBottom>
+              연결된 계정: {account}
+            </Typography>
+            <Typography variant="body1" gutterBottom>
+              권한: {isUserDoctor ? "의사" : "일반 사용자"}
+            </Typography>
+
+            {isUserDoctor && (
+              <>
+                <Card sx={{ mt: 2, mb: 2 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      의사 추가
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          label="의사 주소"
+                          value={newDoctorAddress}
+                          onChange={(e) => setNewDoctorAddress(e.target.value)}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          onClick={handleAddDoctor}
+                          disabled={loading || !newDoctorAddress}
+                        >
+                          의사 추가
+                        </Button>
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+
+                <Card sx={{ mt: 2, mb: 2 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      접근 요청 관리
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={handleGetAccessRequests}
+                      disabled={loading}
+                      sx={{ mb: 2 }}
+                    >
+                      접근 요청 목록 조회
+                    </Button>
+                    <List>
+                      {accessRequests.map((request) => (
+                        <ListItem key={request.requestId}>
+                          <ListItemText
+                            primary={`요청자: ${request.requester}`}
+                            secondary={`기록 ID: ${
+                              request.recordId
+                            } | 시간: ${new Date(
+                              request.timestamp * 1000
+                            ).toLocaleString()}`}
+                          />
+                          <ListItemSecondaryAction>
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              onClick={() => handleGrantAccess(request)}
+                              disabled={loading}
+                            >
+                              권한 부여
+                            </Button>
+                          </ListItemSecondaryAction>
+                        </ListItem>
+                      ))}
+                    </List>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+
+            <Card sx={{ mt: 2, mb: 2 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  의료 기록 관리
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="환자 주소"
+                      value={patientAddress}
+                      onChange={(e) => setPatientAddress(e.target.value)}
+                    />
+                  </Grid>
+                  {isUserDoctor && (
+                    <Grid item xs={12}>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={handleOpenAddRecordDialog}
+                        disabled={loading || !patientAddress}
+                      >
+                        의료 기록 추가
+                      </Button>
+                    </Grid>
+                  )}
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="기록 ID"
+                      value={recordId}
+                      onChange={(e) => setRecordId(e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={handleGetRecord}
+                      disabled={loading || !patientAddress || !recordId}
+                    >
+                      의료 기록 조회
+                    </Button>
+                  </Grid>
+                  {!isUserDoctor && (
+                    <>
+                      <Grid item xs={12}>
+                        <Button
+                          variant="contained"
+                          color="secondary"
+                          onClick={handleRequestAccess}
+                          disabled={loading || !patientAddress || !recordId}
+                        >
+                          접근 요청
+                        </Button>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Button
+                          variant="contained"
+                          color="info"
+                          onClick={handleCheckAccess}
+                          disabled={loading || !recordId}
+                        >
+                          접근 권한 확인
+                        </Button>
+                      </Grid>
+                    </>
+                  )}
+                </Grid>
+              </CardContent>
+            </Card>
+
+            {record && (
+              <Card sx={{ mt: 2 }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    의료 기록 상세
+                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Alert
+                      severity={signatureStatus?.isValid ? "success" : "error"}
+                      sx={{ mb: 2 }}
+                    >
+                      {signatureStatus?.message}
+                    </Alert>
+                  </Box>
+                  <Typography variant="body1">CID: {record.cid}</Typography>
+                  <Typography variant="body1">
+                    병원: {record.hospital}
+                  </Typography>
+                  <Typography variant="body1">
+                    서명: {record.signature.substring(0, 20)}...
+                  </Typography>
+                  <Typography variant="body1">
+                    시간: {new Date(record.timestamp * 1000).toLocaleString()}
+                  </Typography>
+                  <Divider sx={{ my: 2 }} />
+                  <Typography variant="body1">
+                    진단: {record.diagnosis}
+                  </Typography>
+                  <Typography variant="body1">
+                    처방: {record.prescription}
+                  </Typography>
+                  <Typography variant="body1">비고: {record.notes}</Typography>
+                  {record.bloodType && (
+                    <Typography variant="body1">
+                      혈액형: {record.bloodType}
+                    </Typography>
+                  )}
+                  {record.height && (
+                    <Typography variant="body1">
+                      키: {record.height}cm
+                    </Typography>
+                  )}
+                  {record.weight && (
+                    <Typography variant="body1">
+                      체중: {record.weight}kg
+                    </Typography>
+                  )}
+                  {record.allergies && (
+                    <Typography variant="body1">
+                      알레르기: {record.allergies}
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </Box>
+        )}
+
+        {/* 의료 기록 추가 다이얼로그 */}
+        <Dialog
+          open={addRecordDialogOpen}
+          onClose={handleCloseAddRecordDialog}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>의료 기록 추가</DialogTitle>
+          <DialogContent>
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="진단"
+                  value={newRecord.diagnosis}
+                  onChange={(e) =>
+                    setNewRecord({ ...newRecord, diagnosis: e.target.value })
+                  }
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="처방"
+                  value={newRecord.prescription}
+                  onChange={(e) =>
+                    setNewRecord({ ...newRecord, prescription: e.target.value })
+                  }
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="비고"
+                  multiline
+                  rows={3}
+                  value={newRecord.notes}
+                  onChange={(e) =>
+                    setNewRecord({ ...newRecord, notes: e.target.value })
+                  }
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  select
+                  label="혈액형"
+                  value={newRecord.bloodType}
+                  onChange={(e) =>
+                    setNewRecord({ ...newRecord, bloodType: e.target.value })
+                  }
+                >
+                  <MenuItem value="A">A형</MenuItem>
+                  <MenuItem value="B">B형</MenuItem>
+                  <MenuItem value="AB">AB형</MenuItem>
+                  <MenuItem value="O">O형</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="키 (cm)"
+                  type="number"
+                  value={newRecord.height}
+                  onChange={(e) =>
+                    setNewRecord({ ...newRecord, height: e.target.value })
+                  }
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="체중 (kg)"
+                  type="number"
+                  value={newRecord.weight}
+                  onChange={(e) =>
+                    setNewRecord({ ...newRecord, weight: e.target.value })
+                  }
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="알레르기"
+                  value={newRecord.allergies}
+                  onChange={(e) =>
+                    setNewRecord({ ...newRecord, allergies: e.target.value })
+                  }
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseAddRecordDialog}>취소</Button>
+            <Button
+              onClick={handleAddRecord}
+              variant="contained"
+              color="primary"
+              disabled={loading || !newRecord.diagnosis}
+            >
+              {loading ? <CircularProgress size={24} /> : "추가"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {alert.open && (
+          <Alert
+            severity={alert.severity}
+            onClose={() => setAlert({ ...alert, open: false })}
+            sx={{ mt: 2 }}
+          >
+            {alert.message}
+          </Alert>
+        )}
+
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
         )}
       </Box>
-
-      <Grid container spacing={4} sx={{ mb: 8 }}>
-        <Grid item xs={12} md={6}>
-          <Card elevation={3} sx={{ height: '100%' }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <LocalHospitalIcon color="primary" sx={{ fontSize: 40, mr: 2 }} />
-                <Typography variant="h5" component="h2">
-                  의사 계정 등록
-                </Typography>
-              </Box>
-              <Typography variant="body1" sx={{ mb: 3 }}>
-                의사 또는 병원으로 등록하여 환자 의료 데이터를 관리하고 등록할 수 있습니다.
-                승인 후에는 의료 정보를 안전하게 기록하고 접근할 수 있습니다.
-              </Typography>
-            </CardContent>
-            <CardActions sx={{ px: 2, pb: 2 }}>
-              <Button 
-                variant="contained" 
-                color="primary" 
-                onClick={handleRegisterAsDoctor}
-                startIcon={<PersonAddIcon />}
-                fullWidth
-                disabled={isLoading || !isWalletConnected}
-              >
-                의사로 등록하기
-              </Button>
-            </CardActions>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Card elevation={3} sx={{ height: '100%' }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <PersonIcon color="primary" sx={{ fontSize: 40, mr: 2 }} />
-                <Typography variant="h5" component="h2">
-                  환자 계정 등록
-                </Typography>
-              </Box>
-              <Typography variant="body1" sx={{ mb: 3 }}>
-                환자로 등록하여 자신의 의료 데이터를 관리하고 영지식 증명을 통해 
-                필요한 정보만 선택적으로 공유할 수 있습니다. 개인정보를 안전하게 보호하세요.
-              </Typography>
-            </CardContent>
-            <CardActions sx={{ px: 2, pb: 2 }}>
-              <Button 
-                variant="contained" 
-                color="secondary"
-                onClick={handleRegisterAsPatient}
-                startIcon={<PersonAddIcon />}
-                fullWidth
-                disabled={isLoading || !isWalletConnected}
-              >
-                환자로 등록하기
-              </Button>
-            </CardActions>
-          </Card>
-        </Grid>
-      </Grid>
-
-      <Divider sx={{ mb: 6 }} />
-
-      <Box sx={{ mb: 8 }}>
-        <Typography variant="h4" gutterBottom align="center" sx={{ mb: 4 }}>
-          ZKare의 주요 특징
-        </Typography>
-        <Grid container spacing={4}>
-          <Grid item xs={12} md={4}>
-            <Paper elevation={2} sx={{ p: 3, height: '100%', borderTop: '4px solid #2e7d32' }}>
-              <Typography variant="h6" gutterBottom>
-                🔒 프라이버시 보호
-              </Typography>
-              <Typography variant="body1">
-                영지식 증명(ZK Proofs)을 통해 실제 개인 의료 데이터를 공개하지 않고도
-                필요한 사항만 선택적으로 증명할 수 있습니다.
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Paper elevation={2} sx={{ p: 3, height: '100%', borderTop: '4px solid #2e7d32' }}>
-              <Typography variant="h6" gutterBottom>
-                ⛓️ 블록체인 기반 보안
-              </Typography>
-              <Typography variant="body1">
-                의료 정보 접근 승인 내역과 증명 기록이 블록체인에 안전하게 저장되어
-                투명하고 변조 불가능한 이력 관리가 가능합니다.
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Paper elevation={2} sx={{ p: 3, height: '100%', borderTop: '4px solid #2e7d32' }}>
-              <Typography variant="h6" gutterBottom>
-                🔍 선택적 공개
-              </Typography>
-              <Typography variant="body1">
-                환자가 원하는 의료 정보만 선택적으로 승인하고 공개할 수 있어
-                개인정보 자기결정권을 강화합니다.
-              </Typography>
-            </Paper>
-          </Grid>
-        </Grid>
-      </Box>
-
-      <Box sx={{ mb: 8, textAlign: 'center' }}>
-        <Button 
-          variant="outlined" 
-          size="large" 
-          color="primary"
-          onClick={() => navigate('/demo')}
-          startIcon={<MedicalInformationIcon />}
-          sx={{ fontSize: '1rem', py: 1, px: 3 }}
-        >
-          데모 체험하기
-        </Button>
-      </Box>
-
-      <Box mt={6}>
-        <Typography variant="h4" component="h2" gutterBottom>
-          시스템 현황
-        </Typography>
-        <Divider sx={{ mb: 3 }} />
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Accordion defaultExpanded>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography variant="h6">
-                  등록된 의사 목록 ({doctors.length})
-                </Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                {loadingDoctors ? (
-                  <Box display="flex" justifyContent="center" p={2}>
-                    <CircularProgress />
-                  </Box>
-                ) : doctors.length === 0 ? (
-                  <Alert severity="info">등록된 의사가 없습니다.</Alert>
-                ) : (
-                  <Paper variant="outlined">
-                    <List dense>
-                      {doctors.map((doctor, index) => (
-                        <ListItem key={index} divider={index < doctors.length - 1}>
-                          <ListItemText 
-                            primary={`${doctor.address.substring(0, 8)}...${doctor.address.substring(36)}`}
-                            secondary={doctor.isActive ? '활성 상태' : '비활성 상태'}
-                          />
-                          <Chip 
-                            label={doctor.isActive ? '활성' : '비활성'} 
-                            color={doctor.isActive ? 'success' : 'default'} 
-                            size="small" 
-                          />
-                        </ListItem>
-                      ))}
-                    </List>
-                  </Paper>
-                )}
-                <Box mt={2} textAlign="right">
-                  <Button 
-                    size="small" 
-                    onClick={loadDoctorsList} 
-                    disabled={loadingDoctors}
-                  >
-                    {loadingDoctors ? <CircularProgress size={20} /> : '새로 고침'}
-                  </Button>
-                </Box>
-              </AccordionDetails>
-            </Accordion>
-          </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <Accordion defaultExpanded>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography variant="h6">
-                  등록된 환자 목록 ({patients.length})
-                </Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                {loadingPatients ? (
-                  <Box display="flex" justifyContent="center" p={2}>
-                    <CircularProgress />
-                  </Box>
-                ) : patients.length === 0 ? (
-                  <Alert severity="info">등록된 환자가 없습니다.</Alert>
-                ) : (
-                  <Paper variant="outlined">
-                    <List dense>
-                      {patients.map((patient, index) => (
-                        <ListItem key={index} divider={index < patients.length - 1}>
-                          <ListItemText 
-                            primary={`${patient.address.substring(0, 8)}...${patient.address.substring(36)}`}
-                            secondary={
-                              <>
-                                {`저장된 기록: ${patient.recordCount || 0}개`}
-                                <br />
-                                {`혈액형: ${getBloodTypeName(patient.bloodType)}`}
-                              </>
-                            }
-                          />
-                        </ListItem>
-                      ))}
-                    </List>
-                  </Paper>
-                )}
-                <Box mt={2} textAlign="right">
-                  <Button 
-                    size="small" 
-                    onClick={loadPatientsList} 
-                    disabled={loadingPatients}
-                  >
-                    {loadingPatients ? <CircularProgress size={20} /> : '새로 고침'}
-                  </Button>
-                </Box>
-              </AccordionDetails>
-            </Accordion>
-          </Grid>
-        </Grid>
-      </Box>
-
-      <Snackbar open={alertOpen} autoHideDuration={6000} onClose={handleAlertClose}>
-        <Alert onClose={handleAlertClose} severity={alertSeverity} sx={{ width: '100%' }}>
-          {alertMessage}
-        </Alert>
-      </Snackbar>
     </Container>
   );
 };
 
-export default Home; 
+export default Home;

@@ -1,19 +1,23 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const medicalController = require('../controllers/medicalController');
+const medicalController = require("../controllers/medicalController");
 
-/**
- * @route   POST /api/medical/blood-type/proof
- * @desc    혈액형 증명 생성
- * @access  Public
- */
-router.post('/blood-type/proof', medicalController.generateBloodTypeProof);
+// 의료 기록 추가
+router.post("/records", (req, res) =>
+  medicalController.addMedicalRecord(req, res)
+);
 
-/**
- * @route   POST /api/medical/blood-type/verify
- * @desc    혈액형 증명 검증
- * @access  Public
- */
-router.post('/blood-type/verify', medicalController.verifyBloodTypeProof);
+// 의료 기록 조회
+router.get("/records/:patientAddress/:recordId", (req, res) =>
+  medicalController.getMedicalRecord(req, res)
+);
 
-module.exports = router; 
+// 의사 추가
+router.post("/doctors", (req, res) => medicalController.addDoctor(req, res));
+
+// 의사 여부 확인
+router.get("/doctors/:address", (req, res) =>
+  medicalController.isDoctor(req, res)
+);
+
+module.exports = router;
