@@ -26,14 +26,14 @@
     "axios": "^1.6.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "ethers": "^5.7.2",
+    "ethers": "^6.8.1",
     "express": "^4.18.2",
     "ipfs-http-client": "^60.0.1",
     "morgan": "^1.10.0",
     "web3": "^1.10.0"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-chai-matchers": "^1.0.6",
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.0",
     "@nomicfoundation/hardhat-ethers": "^3.0.8",
     "@nomicfoundation/hardhat-ignition": "^0.15.11",
     "@nomicfoundation/hardhat-ignition-ethers": "^0.15.11",

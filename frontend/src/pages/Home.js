@@ -148,7 +148,25 @@ const Home = () => {
       setLoading(true);
       setSignatureStatus(null);
       const record = await getMedicalRecord(patientAddress, recordId);
-      setRecord(record);
+
+      // record[0] = data (JSON string)
+      // record[1] = signature
+      // record[2] = hospital
+      // record[3] = timestamp
+      let parsed = {};
+      try {
+        parsed = JSON.parse(record[0]);
+      } catch (e) {
+        parsed = {};
+      }
+
+      setRecord({
+        ...parsed,
+        signature: record[1],
+        hospital: record[2],
+        timestamp: record[3],
+      });
+
       setSignatureStatus({
         isValid: true,
         message: "서명이 유효합니다.",

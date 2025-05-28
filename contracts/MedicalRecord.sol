@@ -3,12 +3,13 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 contract MedicalRecord is Ownable {
     using ECDSA for bytes32;
 
     struct Record {
-        string cid;           // IPFS CID
+        string data;          // 의료 기록 데이터
         bytes signature;      // 병원의 서명
         address hospital;     // 병원 주소
         uint256 timestamp;    // 기록 생성 시간
@@ -21,13 +22,11 @@ contract MedicalRecord is Ownable {
     // 의사 주소 => 권한 여부
     mapping(address => bool) private doctors;
 
-    event RecordAdded(address indexed patient, uint256 indexed recordId, string cid);
+    event RecordAdded(address indexed patient, uint256 indexed recordId, string data);
     event DoctorAdded(address indexed doctor);
     event DoctorRemoved(address indexed doctor);
 
-    constructor() {
-        _transferOwnership(msg.sender);
-    }
+    constructor() Ownable(msg.sender) {}
 
     // 의사 추가
     function addDoctor(address doctor) external onlyOwner {
@@ -48,35 +47,35 @@ contract MedicalRecord is Ownable {
 
     // 서명 검증
     function verifySignature(
-        string memory cid,
+        string memory data,
         bytes memory signature,
         address hospital
     ) public pure returns (bool) {
-        bytes32 messageHash = keccak256(abi.encodePacked(cid));
-        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
-        return ethSignedMessageHash.recover(signature) == hospital;
+        bytes32 messageHash = MessageHashUtils.toEthSignedMessageHash(bytes(data));
+        address signer = ECDSA.recover(messageHash, signature);
+        return signer == hospital;
     }
 
     // 의료 기록 추가
     function addMedicalRecord(
         address patient,
-        string memory cid,
+        string memory data,
         bytes memory signature,
         address hospital
     ) external {
         require(doctors[msg.sender], "Only doctors can add records");
-        require(verifySignature(cid, signature, hospital), "Invalid signature");
+        require(verifySignature(data, signature, hospital), "Invalid signature");
 
         uint256 recordId = recordCounts[patient];
         records[patient][recordId] = Record({
-            cid: cid,
+            data: data,
             signature: signature,
             hospital: hospital,
             timestamp: block.timestamp
         });
         recordCounts[patient]++;
 
-        emit RecordAdded(patient, recordId, cid);
+        emit RecordAdded(patient, recordId, data);
     }
 
     // 의료 기록 조회
@@ -84,14 +83,14 @@ contract MedicalRecord is Ownable {
         external
         view
         returns (
-            string memory cid,
+            string memory data,
             bytes memory signature,
             address hospital,
             uint256 timestamp
         )
     {
         Record memory record = records[patient][recordId];
-        return (record.cid, record.signature, record.hospital, record.timestamp);
+        return (record.data, record.signature, record.hospital, record.timestamp);
     }
 
     // 환자의 기록 수 조회

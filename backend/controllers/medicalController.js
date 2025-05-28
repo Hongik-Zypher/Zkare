@@ -1,26 +1,19 @@
-const zkProofService = require("../services/zkProofService");
-const medicalRecordService = require("../services/medicalRecordService");
+const { JsonRpcProvider, Wallet, Contract } = require("ethers");
 const config = require("../config");
-const MedicalRecordService = require("../services/MedicalRecordService");
-const { ethers } = require("ethers");
-
-// 설정 확인
-let zkService;
-try {
-  zkService = new zkProofService({
-    providerUrl: config.RPC_URL,
-    verifierContractAddress: config.CONTRACT_ADDRESS,
-    verifierABI: require("../constants/verifierABI.json"),
-    config,
-  });
-  console.log("MedicalController에서 ZkProofService 초기화 성공");
-} catch (error) {
-  console.error("MedicalController에서 ZkProofService 초기화 실패:", error);
-}
 
 class MedicalController {
   constructor() {
-    this.medicalRecordService = new MedicalRecordService();
+    // 컨트랙트 초기화
+    const provider = new JsonRpcProvider(config.RPC_URL);
+    const privateKey = config.PRIVATE_KEY.startsWith("0x")
+      ? config.PRIVATE_KEY
+      : `0x${config.PRIVATE_KEY}`;
+    const wallet = new Wallet(privateKey, provider);
+    this.contract = new Contract(
+      config.CONTRACT_ADDRESS,
+      require("../abis/MedicalRecord.json").abi,
+      wallet
+    );
   }
 
   // 의료 기록 추가
@@ -35,15 +28,32 @@ class MedicalController {
         });
       }
 
-      // 의료 기록 추가 (서명 및 IPFS 업로드 포함)
-      const result = await this.medicalRecordService.addMedicalRecord(
-        patientAddress,
-        recordData
-      );
+      // IPFS에 데이터 업로드
+      const response = await fetch("http://localhost:3001/api/ipfs/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(recordData),
+      });
+
+      if (!response.ok) {
+        throw new Error("IPFS 업로드 실패");
+      }
+
+      const { cid, signature } = await response.json();
+
+      // 스마트 컨트랙트에 기록 추가
+      const tx = await this.contract.addRecord(patientAddress, cid);
+      await tx.wait();
 
       res.json({
         success: true,
-        data: result,
+        data: {
+          transactionHash: tx.hash,
+          cid,
+          signature,
+        },
       });
     } catch (error) {
       console.error("의료 기록 추가 중 오류:", error);
@@ -67,15 +77,36 @@ class MedicalController {
         });
       }
 
-      // 의료 기록 조회 (IPFS에서 데이터 조회 포함)
-      const record = await this.medicalRecordService.getMedicalRecord(
+      // 스마트 컨트랙트에서 기록 조회
+      const record = await this.contract.getRecord(
         patientAddress,
         parseInt(recordId)
       );
 
+      if (!record || !record.cid) {
+        return res.status(404).json({
+          success: false,
+          message: "의료 기록을 찾을 수 없습니다.",
+        });
+      }
+
+      // IPFS에서 데이터 조회
+      const response = await fetch(
+        `http://localhost:3001/api/ipfs/${record.cid}`
+      );
+      if (!response.ok) {
+        throw new Error("IPFS 데이터 조회 실패");
+      }
+
+      const recordData = await response.json();
+
       res.json({
         success: true,
-        data: record,
+        data: {
+          ...recordData,
+          cid: record.cid,
+          timestamp: record.timestamp.toNumber(),
+        },
       });
     } catch (error) {
       console.error("의료 기록 조회 중 오류:", error);
@@ -99,9 +130,7 @@ class MedicalController {
         });
       }
 
-      const tx = await this.medicalRecordService.contract.addDoctor(
-        doctorAddress
-      );
+      const tx = await this.contract.addDoctor(doctorAddress);
       await tx.wait();
 
       res.json({
@@ -131,9 +160,7 @@ class MedicalController {
         });
       }
 
-      const isDoctor = await this.medicalRecordService.contract.isDoctor(
-        address
-      );
+      const isDoctor = await this.contract.isDoctor(address);
 
       res.json({
         success: true,
@@ -150,102 +177,4 @@ class MedicalController {
   }
 }
 
-module.exports = MedicalController;
-
-/**
- * 혈액형 증명 생성 컨트롤러
- * @param {Object} req - 요청 객체
- * @param {Object} res - 응답 객체
- */
-exports.generateBloodTypeProof = async (req, res) => {
-  try {
-    // ZkProofService 인스턴스 확인
-    if (!zkService) {
-      return res.status(500).json({
-        success: false,
-        message: "ZK 증명 서비스가 초기화되지 않았습니다.",
-      });
-    }
-
-    const { patientAddress, targetBloodType } = req.body;
-
-    if (!patientAddress || !targetBloodType) {
-      return res.status(400).json({
-        success: false,
-        message: "환자 주소와 검증할 혈액형이 필요합니다.",
-      });
-    }
-
-    // 혈액형 코드 변환
-    const bloodTypeCode =
-      medicalRecordService.getBloodTypeCode(targetBloodType);
-    if (bloodTypeCode === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "유효하지 않은 혈액형입니다. A, B, AB, O 중 하나여야 합니다.",
-      });
-    }
-
-    // 혈액형 증명 생성
-    const proofData = await zkService.generateBloodTypeProof(
-      patientAddress,
-      bloodTypeCode
-    );
-
-    res.status(200).json({
-      success: true,
-      proofData,
-    });
-  } catch (error) {
-    console.error("혈액형 증명 생성 오류:", error);
-    res.status(500).json({
-      success: false,
-      message: "혈액형 증명 생성 중 오류가 발생했습니다.",
-      error: error.message,
-    });
-  }
-};
-
-/**
- * 혈액형 증명 검증 컨트롤러
- * @param {Object} req - 요청 객체
- * @param {Object} res - 응답 객체
- */
-exports.verifyBloodTypeProof = async (req, res) => {
-  try {
-    // ZkProofService 인스턴스 확인
-    if (!zkService) {
-      return res.status(500).json({
-        success: false,
-        message: "ZK 증명 서비스가 초기화되지 않았습니다.",
-      });
-    }
-
-    const { proof, publicInputs } = req.body;
-
-    if (!proof || !publicInputs) {
-      return res.status(400).json({
-        success: false,
-        message: "proof와 publicInputs가 모두 필요합니다.",
-      });
-    }
-
-    // 혈액형 증명 검증
-    const isValid = await zkService.verifyBloodTypeProof(proof, publicInputs);
-
-    res.status(200).json({
-      success: true,
-      isValid,
-      bloodType: medicalRecordService.getBloodTypeFromCode(
-        publicInputs.targetBloodTypeCode
-      ),
-    });
-  } catch (error) {
-    console.error("혈액형 증명 검증 오류:", error);
-    res.status(500).json({
-      success: false,
-      message: "혈액형 증명 검증 중 오류가 발생했습니다.",
-      error: error.message,
-    });
-  }
-};
+module.exports = new MedicalController();

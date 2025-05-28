@@ -3,8 +3,8 @@ import MedicalRecordABI from "../abis/MedicalRecord.json";
 import AccessControlABI from "../abis/AccessControl.json";
 
 // 컨트랙트 주소 하드코딩
-const MEDICAL_RECORD_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-const ACCESS_CONTROL_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
+const MEDICAL_RECORD_ADDRESS = "0x610178dA211FEF7D417bC0e6FeD39F05609AD788";
+const ACCESS_CONTROL_ADDRESS = "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9";
 
 let provider;
 let signer;
@@ -100,28 +100,24 @@ export const addMedicalRecord = async (patientAddress, recordData) => {
       await initializeContracts();
     }
 
-    // IPFS에 데이터 업로드
-    const response = await fetch("http://localhost:5001/api/ipfs/upload", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(recordData),
-    });
+    // 데이터를 문자열로 변환
+    const data = JSON.stringify(recordData);
 
-    if (!response.ok) {
-      throw new Error("IPFS 업로드 실패");
-    }
-
-    const { cid, signature } = await response.json();
+    // 서명 생성
+    const signature = await signer.signMessage(data);
 
     // 컨트랙트에 기록 추가
-    const tx = await medicalRecordContract.addRecord(patientAddress, cid);
+    const tx = await medicalRecordContract.addMedicalRecord(
+      patientAddress,
+      data,
+      signature,
+      await signer.getAddress()
+    );
     await tx.wait();
 
     return {
       transactionHash: tx.hash,
-      cid,
+      data,
       signature,
     };
   } catch (error) {
