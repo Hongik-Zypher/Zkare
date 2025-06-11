@@ -7,30 +7,12 @@ import {
   Button,
   Box,
   Container,
-  IconButton,
-  Menu,
-  MenuItem,
   Chip
 } from '@mui/material';
-import MenuIcon from '@mui/icons-material/Menu';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
-import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
-import PersonIcon from '@mui/icons-material/Person';
-import MedicalInformationIcon from '@mui/icons-material/MedicalInformation';
-import PlayCircleIcon from '@mui/icons-material/PlayCircle';
 import HomeIcon from '@mui/icons-material/Home';
 
-// 네비게이션 링크 정의
-const pages = [
-  { title: '홈', path: '/', icon: <HomeIcon /> },
-  { title: '환자', path: '/patient', icon: <PersonIcon /> },
-  { title: '병원', path: '/hospital', icon: <LocalHospitalIcon /> },
-  { title: '요청자', path: '/requester', icon: <MedicalInformationIcon /> },
-  { title: '데모', path: '/demo', icon: <PlayCircleIcon /> }
-];
-
 const Navbar = () => {
-  const [anchorElNav, setAnchorElNav] = useState(null);
   const [walletAddress, setWalletAddress] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const location = useLocation();
@@ -45,6 +27,19 @@ const Navbar = () => {
     };
 
     checkConnection();
+
+    // 계정 변경 이벤트 리스너
+    if (window.ethereum) {
+      window.ethereum.on('accountsChanged', (accounts) => {
+        if (accounts.length > 0) {
+          setWalletAddress(accounts[0]);
+          setIsConnected(true);
+        } else {
+          setWalletAddress('');
+          setIsConnected(false);
+        }
+      });
+    }
   }, []);
 
   const connectWallet = async () => {
@@ -63,23 +58,12 @@ const Navbar = () => {
     }
   };
 
-  const handleOpenNavMenu = (event) => {
-    setAnchorElNav(event.currentTarget);
-  };
-
-  const handleCloseNavMenu = () => {
-    setAnchorElNav(null);
-  };
-
-  // 현재 활성화된 페이지 확인
-  const isActive = (path) => location.pathname === path;
-
   return (
     <AppBar position="static">
       <Container maxWidth="xl">
         <Toolbar disableGutters>
-          {/* 로고 (큰 화면) */}
-          <AccountBalanceIcon sx={{ display: { xs: 'none', md: 'flex' }, mr: 1 }} />
+          {/* 로고 */}
+          <AccountBalanceIcon sx={{ display: { xs: 'flex', md: 'flex' }, mr: 1 }} />
           <Typography
             variant="h6"
             noWrap
@@ -87,105 +71,36 @@ const Navbar = () => {
             to="/"
             sx={{
               mr: 2,
-              display: { xs: 'none', md: 'flex' },
+              display: { xs: 'flex', md: 'flex' },
               fontWeight: 700,
               color: 'inherit',
               textDecoration: 'none',
-            }}
-          >
-            ZKare
-          </Typography>
-
-          {/* 모바일 메뉴 */}
-          <Box sx={{ flexGrow: 1, display: { xs: 'flex', md: 'none' } }}>
-            <IconButton
-              size="large"
-              aria-controls="menu-appbar"
-              aria-haspopup="true"
-              onClick={handleOpenNavMenu}
-              color="inherit"
-            >
-              <MenuIcon />
-            </IconButton>
-            <Menu
-              id="menu-appbar"
-              anchorEl={anchorElNav}
-              anchorOrigin={{
-                vertical: 'bottom',
-                horizontal: 'left',
-              }}
-              keepMounted
-              transformOrigin={{
-                vertical: 'top',
-                horizontal: 'left',
-              }}
-              open={Boolean(anchorElNav)}
-              onClose={handleCloseNavMenu}
-              sx={{
-                display: { xs: 'block', md: 'none' },
-              }}
-            >
-              {pages.map((page) => (
-                <MenuItem 
-                  key={page.title} 
-                  component={RouterLink} 
-                  to={page.path}
-                  onClick={handleCloseNavMenu}
-                  selected={isActive(page.path)}
-                >
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    {page.icon}
-                    <Typography sx={{ ml: 1 }}>{page.title}</Typography>
-                  </Box>
-                </MenuItem>
-              ))}
-            </Menu>
-          </Box>
-
-          {/* 로고 (작은 화면) */}
-          <AccountBalanceIcon sx={{ display: { xs: 'flex', md: 'none' }, mr: 1 }} />
-          <Typography
-            variant="h5"
-            noWrap
-            component={RouterLink}
-            to="/"
-            sx={{
-              mr: 2,
-              display: { xs: 'flex', md: 'none' },
               flexGrow: 1,
-              fontWeight: 700,
-              color: 'inherit',
-              textDecoration: 'none',
             }}
           >
-            ZKare
+            Zkare 의료기록 관리 시스템
           </Typography>
 
-          {/* 데스크톱 메뉴 */}
-          <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' } }}>
-            {pages.map((page) => (
-              <Button
-                key={page.title}
-                component={RouterLink}
-                to={page.path}
-                onClick={handleCloseNavMenu}
-                sx={{ 
-                  my: 2, 
-                  color: 'white', 
-                  display: 'flex', 
-                  alignItems: 'center',
-                  backgroundColor: isActive(page.path) ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
-                  '&:hover': {
-                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                  },
-                  mx: 0.5,
-                  borderRadius: 1,
-                }}
-                startIcon={page.icon}
-              >
-                {page.title}
-              </Button>
-            ))}
+          {/* 홈 버튼 */}
+          <Box sx={{ display: { xs: 'none', md: 'flex' }, mr: 2 }}>
+            <Button
+              component={RouterLink}
+              to="/"
+              sx={{ 
+                my: 2, 
+                color: 'white', 
+                display: 'flex', 
+                alignItems: 'center',
+                backgroundColor: location.pathname === '/' ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
+                '&:hover': {
+                  backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                },
+                borderRadius: 1,
+              }}
+              startIcon={<HomeIcon />}
+            >
+              홈
+            </Button>
           </Box>
 
           {/* 지갑 연결 버튼 */}
@@ -198,11 +113,17 @@ const Navbar = () => {
                 sx={{ color: 'white', borderColor: 'white' }}
               />
             ) : (
-              <Button 
-                color="inherit" 
-                variant="outlined" 
+              <Button
+                color="inherit"
+                variant="outlined"
                 onClick={connectWallet}
-                sx={{ borderColor: 'white', '&:hover': { borderColor: 'white', backgroundColor: 'rgba(255, 255, 255, 0.08)' } }}
+                sx={{ 
+                  borderColor: 'white',
+                  '&:hover': {
+                    borderColor: 'white',
+                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                  }
+                }}
               >
                 지갑 연결
               </Button>

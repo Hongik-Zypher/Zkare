@@ -1,46 +1,64 @@
 import { ethers } from "ethers";
 import MedicalRecordABI from "../abis/MedicalRecord.json";
-import AccessControlABI from "../abis/AccessControl.json";
 
-// 컨트랙트 주소 하드코딩
-const MEDICAL_RECORD_ADDRESS = "0x610178dA211FEF7D417bC0e6FeD39F05609AD788";
-const ACCESS_CONTROL_ADDRESS = "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9";
+// 컨트랙트 주소 - 배포 후 업데이트 필요
+const MEDICAL_RECORD_ADDRESS = process.env.REACT_APP_CONTRACT_ADDRESS || "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 
 let provider;
 let signer;
 let medicalRecordContract;
-let accessControlContract;
 
 // 컨트랙트 초기화
 export const initializeContracts = async () => {
   try {
+    console.log("🚀 컨트랙트 초기화 시작");
+    
     if (typeof window.ethereum === "undefined") {
       throw new Error("MetaMask가 설치되어 있지 않습니다.");
     }
 
-    provider = new ethers.providers.Web3Provider(window.ethereum);
-    signer = provider.getSigner();
+    // 계정 연결 요청
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
 
+    console.log("🔌 Provider 생성 중...");
+    provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+    
+    // 네트워크 강제 새로고침
+    await provider.send("eth_requestAccounts", []);
+    
+    console.log("✍️ Signer 생성 중...");
+    signer = provider.getSigner();
+    
+    const signerAddress = await signer.getAddress();
+    console.log("👤 연결된 계정:", signerAddress);
+    
+    const network = await provider.getNetwork();
+    console.log("🌐 네트워크:", network);
+    
+    // 하드햇 네트워크가 아니면 경고
+    if (network.chainId !== 31337) {
+      console.warn("⚠️ 하드햇 네트워크가 아닙니다! 체인ID:", network.chainId);
+      alert("MetaMask를 Hardhat 네트워크(localhost:8545, 체인ID: 31337)로 변경해주세요!");
+    }
+
+    console.log("📋 컨트랙트 생성 중...");
+    console.log("📋 컨트랙트 주소:", MEDICAL_RECORD_ADDRESS);
+    
     medicalRecordContract = new ethers.Contract(
       MEDICAL_RECORD_ADDRESS,
       MedicalRecordABI.abi,
       signer
     );
-
-    accessControlContract = new ethers.Contract(
-      ACCESS_CONTROL_ADDRESS,
-      AccessControlABI.abi,
-      signer
-    );
+    
+    console.log("✅ 컨트랙트 초기화 완료");
 
     return {
       provider,
       signer,
       medicalRecordContract,
-      accessControlContract,
     };
   } catch (error) {
-    console.error("컨트랙트 초기화 중 오류:", error);
+    console.error("❌ 컨트랙트 초기화 중 오류:", error);
     throw new Error(`컨트랙트 초기화 실패: ${error.message}`);
   }
 };
@@ -48,9 +66,8 @@ export const initializeContracts = async () => {
 // 지갑 연결
 export const connectWallet = async () => {
   try {
-    if (!provider) {
-      await initializeContracts();
-    }
+    // 강제로 재초기화
+    await initializeContracts();
 
     const accounts = await window.ethereum.request({
       method: "eth_requestAccounts",
@@ -63,25 +80,110 @@ export const connectWallet = async () => {
   }
 };
 
-// 의사 여부 확인
-export const isDoctor = async (address) => {
+// 현재 연결된 계정 주소 가져오기
+export const getCurrentAccount = async () => {
   try {
-    if (!medicalRecordContract) {
+    if (!signer) {
       await initializeContracts();
     }
-    return await medicalRecordContract.isDoctor(address);
+    return await signer.getAddress();
   } catch (error) {
-    console.error("의사 확인 중 오류:", error);
-    throw new Error(`의사 확인 실패: ${error.message}`);
+    console.error("현재 계정 조회 중 오류:", error);
+    throw new Error(`현재 계정 조회 실패: ${error.message}`);
   }
 };
 
-// 의사 추가
+// 의사 여부 확인 - 여러 방법으로 시도
+export const isDoctor = async (address) => {
+  try {
+    console.log("🔍 의사 확인 시작:", address);
+    
+    // 1. 컨트랙트 재초기화
+    if (!medicalRecordContract) {
+      console.log("🔄 컨트랙트 초기화 중...");
+      await initializeContracts();
+    }
+    
+    // 2. 네트워크 확인
+    const network = await provider.getNetwork();
+    if (network.chainId !== 31337) {
+      console.error("❌ 잘못된 네트워크:", network.chainId);
+      return false;
+    }
+    
+    // 3. 컨트랙트 존재 확인
+    const code = await provider.getCode(MEDICAL_RECORD_ADDRESS);
+    if (code === '0x') {
+      console.error("❌ 컨트랙트가 배포되지 않았습니다:", MEDICAL_RECORD_ADDRESS);
+      return false;
+    }
+    
+    console.log("📞 isDoctor 호출 중...");
+    console.log("📞 컨트랙트 주소:", MEDICAL_RECORD_ADDRESS);
+    console.log("📞 확인할 주소:", address);
+    
+    // 4. 여러 방법으로 호출 시도
+    let result;
+    
+    // 방법 1: 일반 호출
+    try {
+      result = await medicalRecordContract.isDoctor(address);
+      console.log("✅ isDoctor 결과 (방법1):", result);
+      return result;
+    } catch (err1) {
+      console.log("❌ 방법1 실패:", err1.message);
+      
+      // 방법 2: callStatic 사용
+      try {
+        result = await medicalRecordContract.callStatic.isDoctor(address);
+        console.log("✅ isDoctor 결과 (방법2):", result);
+        return result;
+      } catch (err2) {
+        console.log("❌ 방법2 실패:", err2.message);
+        
+        // 방법 3: provider.call 직접 사용
+        try {
+          const iface = new ethers.utils.Interface(MedicalRecordABI.abi);
+          const data = iface.encodeFunctionData("isDoctor", [address]);
+          const response = await provider.call({
+            to: MEDICAL_RECORD_ADDRESS,
+            data: data
+          });
+          result = iface.decodeFunctionResult("isDoctor", response)[0];
+          console.log("✅ isDoctor 결과 (방법3):", result);
+          return result;
+        } catch (err3) {
+          console.log("❌ 방법3 실패:", err3.message);
+          throw err3;
+        }
+      }
+    }
+    
+  } catch (error) {
+    console.error("❌ 의사 확인 중 최종 오류:", error);
+    console.error("❌ 오류 상세:", error.message);
+    console.error("❌ 오류 코드:", error.code);
+    
+    // 기본값으로 Owner인지 확인
+    try {
+      console.log("🔄 Owner 확인으로 폴백...");
+      const owner = await medicalRecordContract.owner();
+      const isOwner = address.toLowerCase() === owner.toLowerCase();
+      console.log("👑 Owner:", owner);
+      console.log("👑 Owner 여부:", isOwner);
+      return isOwner; // Owner라면 의사로 간주
+    } catch (ownerError) {
+      console.error("❌ Owner 확인도 실패:", ownerError);
+      return false;
+    }
+  }
+};
+
+// 의사 추가 (Owner만 가능)
 export const addDoctor = async (doctorAddress) => {
   try {
     if (!medicalRecordContract) {
-      const { medicalRecordContract: contract } = await initializeContracts();
-      medicalRecordContract = contract;
+      await initializeContracts();
     }
 
     const tx = await medicalRecordContract.addDoctor(doctorAddress);
@@ -93,7 +195,23 @@ export const addDoctor = async (doctorAddress) => {
   }
 };
 
-// 의료 기록 추가
+// 의사 제거 (Owner만 가능)
+export const removeDoctor = async (doctorAddress) => {
+  try {
+    if (!medicalRecordContract) {
+      await initializeContracts();
+    }
+
+    const tx = await medicalRecordContract.removeDoctor(doctorAddress);
+    await tx.wait();
+    return tx;
+  } catch (error) {
+    console.error("의사 제거 중 오류 발생:", error);
+    throw new Error("의사 제거에 실패했습니다.");
+  }
+};
+
+// 의료 기록 추가 (의사만 가능)
 export const addMedicalRecord = async (patientAddress, recordData) => {
   try {
     if (!medicalRecordContract) {
@@ -105,13 +223,14 @@ export const addMedicalRecord = async (patientAddress, recordData) => {
 
     // 서명 생성
     const signature = await signer.signMessage(data);
+    const hospitalAddress = await signer.getAddress();
 
     // 컨트랙트에 기록 추가
     const tx = await medicalRecordContract.addMedicalRecord(
       patientAddress,
       data,
       signature,
-      await signer.getAddress()
+      hospitalAddress
     );
     await tx.wait();
 
@@ -130,172 +249,78 @@ export const addMedicalRecord = async (patientAddress, recordData) => {
 export const getMedicalRecord = async (patientAddress, recordId) => {
   try {
     if (!medicalRecordContract) {
-      const { medicalRecordContract: contract } = await initializeContracts();
-      medicalRecordContract = contract;
+      await initializeContracts();
     }
 
-    return await medicalRecordContract.getMedicalRecord(
+    const record = await medicalRecordContract.getMedicalRecord(
       patientAddress,
       recordId
     );
+
+    return {
+      data: record.data,
+      signature: record.signature,
+      hospital: record.hospital,
+      timestamp: record.timestamp.toString(),
+    };
   } catch (error) {
     console.error("의료 기록 조회 중 오류 발생:", error);
     throw new Error("의료 기록 조회에 실패했습니다.");
   }
 };
 
-// 서명 검증 함수
-export const verifySignature = async (cid, signature, hospital) => {
+// 환자의 기록 수 조회
+export const getRecordCount = async (patientAddress) => {
   try {
     if (!medicalRecordContract) {
       await initializeContracts();
     }
 
-    // CID를 해시로 변환
-    const messageHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(cid));
-
-    // 서명 검증
-    const isValid = await medicalRecordContract.verifySignature(
-      messageHash,
-      signature,
-      hospital
-    );
-
-    return isValid;
+    const count = await medicalRecordContract.getRecordCount(patientAddress);
+    return count.toNumber();
   } catch (error) {
-    console.error("서명 검증 중 오류 발생:", error);
-    throw new Error("서명 검증에 실패했습니다.");
+    console.error("기록 수 조회 중 오류 발생:", error);
+    return 0;
   }
 };
 
-// 접근 요청 함수
-export const requestAccess = async (patientAddress, recordId) => {
+// 환자의 모든 의료 기록 조회
+export const getAllMedicalRecords = async (patientAddress) => {
   try {
-    if (!accessControlContract) {
-      await initializeContracts();
+    const recordCount = await getRecordCount(patientAddress);
+    const records = [];
+
+    for (let i = 0; i < recordCount; i++) {
+      try {
+        const record = await getMedicalRecord(patientAddress, i);
+        records.push({
+          id: i,
+          ...record,
+          parsedData: JSON.parse(record.data),
+        });
+      } catch (error) {
+        console.error(`기록 ${i} 조회 중 오류:`, error);
+      }
     }
 
-    const tx = await accessControlContract.requestAccess(
-      patientAddress,
-      recordId
-    );
-    await tx.wait();
-
-    // 접근 요청 이벤트 구독
-    const filter = accessControlContract.filters.AccessRequested(
-      null,
-      patientAddress,
-      recordId
-    );
-    const events = await accessControlContract.queryFilter(filter);
-    const requestId = events[0].args.requestId;
-
-    return {
-      transactionHash: tx.hash,
-      requestId: requestId.toString(),
-    };
+    return records;
   } catch (error) {
-    console.error("접근 요청 중 오류 발생:", error);
-    throw new Error("접근 요청에 실패했습니다.");
+    console.error("모든 의료 기록 조회 중 오류:", error);
+    return [];
   }
 };
 
-// 접근 권한 부여 함수
-export const grantAccess = async (
-  patientAddress,
-  recordId,
-  duration,
-  requestId
-) => {
+// 네트워크 정보 가져오기
+export const getNetworkInfo = async () => {
   try {
-    if (!accessControlContract) {
+    if (!provider) {
       await initializeContracts();
     }
-
-    const tx = await accessControlContract.grantAccess(
-      patientAddress,
-      recordId,
-      duration,
-      requestId
-    );
-    await tx.wait();
-
-    return {
-      transactionHash: tx.hash,
-      expiresAt: Math.floor(Date.now() / 1000) + duration,
-    };
+    return await provider.getNetwork();
   } catch (error) {
-    console.error("접근 권한 부여 중 오류 발생:", error);
-    throw new Error("접근 권한 부여에 실패했습니다.");
+    console.error("네트워크 정보 조회 중 오류:", error);
+    return null;
   }
 };
 
-// 접근 권한 확인 함수
-export const hasAccess = async (patientAddress, recordId) => {
-  try {
-    if (!accessControlContract) {
-      await initializeContracts();
-    }
-
-    const access = await accessControlContract.hasAccess(
-      patientAddress,
-      recordId
-    );
-
-    return {
-      hasAccess: access.hasAccess,
-      expiresAt: access.expiresAt.toNumber(),
-    };
-  } catch (error) {
-    console.error("접근 권한 확인 중 오류 발생:", error);
-    throw new Error("접근 권한 확인에 실패했습니다.");
-  }
-};
-
-// 접근 요청 목록 조회 함수
-export const getAccessRequests = async (patientAddress) => {
-  try {
-    if (!accessControlContract) {
-      await initializeContracts();
-    }
-
-    const filter = accessControlContract.filters.AccessRequested(
-      null,
-      patientAddress,
-      null
-    );
-    const events = await accessControlContract.queryFilter(filter);
-
-    return events.map((event) => ({
-      requestId: event.args.requestId.toString(),
-      requester: event.args.requester,
-      recordId: event.args.recordId.toString(),
-      timestamp: event.args.timestamp.toNumber(),
-    }));
-  } catch (error) {
-    console.error("접근 요청 목록 조회 중 오류 발생:", error);
-    throw new Error("접근 요청 목록 조회에 실패했습니다.");
-  }
-};
-
-// 접근 권한 취소 함수
-export const revokeAccess = async (patientAddress, recordId) => {
-  try {
-    if (!accessControlContract) {
-      await initializeContracts();
-    }
-
-    const tx = await accessControlContract.revokeAccess(
-      patientAddress,
-      recordId
-    );
-    await tx.wait();
-
-    return {
-      transactionHash: tx.hash,
-    };
-  } catch (error) {
-    console.error("접근 권한 취소 중 오류 발생:", error);
-    throw new Error("접근 권한 취소에 실패했습니다.");
-  }
-};
+export { MEDICAL_RECORD_ADDRESS };

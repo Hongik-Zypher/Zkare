@@ -1,7 +1,7 @@
 {
   "name": "medical-records-frontend",
   "version": "0.1.0",
-  "description": "Zkare - 영지식증명 기반 의료기록 접근 제어 시스템 프론트엔드",
+  "description": "Zkare - 의료기록 관리 시스템 프론트엔드",
   "private": true,
   "dependencies": {
     "@emotion/react": "^11.11.0",
@@ -11,15 +11,12 @@
     "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
-    "axios": "^1.6.2",
     "ethers": "^5.7.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.11.1",
     "react-scripts": "5.0.1",
-    "snarkjs": "^0.7.2",
-    "web-vitals": "^2.1.4",
-    "web3": "^1.10.0"
+    "web-vitals": "^2.1.4"
   },
   "scripts": {
     "start": "react-scripts start",

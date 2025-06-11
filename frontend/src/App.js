@@ -9,10 +9,10 @@ import "./App.css";
 const theme = createTheme({
   palette: {
     primary: {
-      main: "#2e7d32",
+      main: "#2e7d32", // 의료 관련 녹색
     },
     secondary: {
-      main: "#1976d2",
+      main: "#1976d2", // 파란색
     },
   },
   typography: {
@@ -28,6 +28,7 @@ function App() {
         <Navbar />
         <Routes>
           <Route path="/" element={<Home />} />
+          {/* 추후 필요한 페이지들을 여기에 추가 */}
         </Routes>
       </Router>
     </ThemeProvider>
