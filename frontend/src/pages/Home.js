@@ -8,6 +8,7 @@ import {
   Card,
   CardContent,
   Grid,
+  Snackbar,
   Alert,
   CircularProgress,
   Dialog,
@@ -20,9 +21,9 @@ import {
   Chip,
   Paper,
 } from "@mui/material";
-import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
-import PersonIcon from '@mui/icons-material/Person';
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
+import PersonIcon from "@mui/icons-material/Person";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import {
   connectWallet,
   isDoctor,
@@ -43,7 +44,7 @@ const Home = () => {
     message: "",
     severity: "info",
   });
-  
+
   // 의료기록 추가 관련 상태
   const [addRecordDialogOpen, setAddRecordDialogOpen] = useState(false);
   const [newRecord, setNewRecord] = useState({
@@ -69,12 +70,12 @@ const Home = () => {
         console.log("🔍 기존 연결 확인 중...");
         const account = window.ethereum.selectedAddress;
         setAccount(account);
-        
+
         console.log("👨‍⚕️ 의사 상태 확인 중...");
         const doctorStatus = await isDoctor(account);
         console.log("👨‍⚕️ 의사 상태 결과:", doctorStatus);
         setIsUserDoctor(doctorStatus);
-        
+
         if (doctorStatus) {
           showAlert("의사 계정으로 로그인되었습니다!", "success");
         } else {
@@ -110,7 +111,15 @@ const Home = () => {
   // 알림 표시
   const showAlert = (message, severity) => {
     setAlert({ open: true, message, severity });
-    setTimeout(() => setAlert({ open: false, message: "", severity: "info" }), 5000);
+    // 3초 후 자동으로 닫기
+    setTimeout(() => {
+      setAlert((prev) => ({ ...prev, open: false }));
+    }, 3000);
+  };
+
+  // 알림 닫기
+  const handleCloseAlert = () => {
+    setAlert({ ...alert, open: false });
   };
 
   // 의료 기록 추가
@@ -130,7 +139,7 @@ const Home = () => {
 
       await addMedicalRecord(patientAddress, recordData);
       showAlert("의료 기록이 성공적으로 추가되었습니다.", "success");
-      
+
       // 폼 초기화
       setPatientAddress("");
       setNewRecord({ diagnosis: "", prescription: "", notes: "", date: "" });
@@ -154,11 +163,14 @@ const Home = () => {
       setLoading(true);
       const patientRecords = await getAllMedicalRecords(patientAddress);
       setRecords(patientRecords);
-      
+
       if (patientRecords.length === 0) {
         showAlert("해당 환자의 의료 기록이 없습니다.", "info");
       } else {
-        showAlert(`${patientRecords.length}개의 의료 기록을 조회했습니다.`, "success");
+        showAlert(
+          `${patientRecords.length}개의 의료 기록을 조회했습니다.`,
+          "success"
+        );
       }
     } catch (error) {
       console.error("의료 기록 조회 중 오류:", error);
@@ -213,17 +225,17 @@ const Home = () => {
     try {
       setLoading(true);
       console.log("🔄 의사 상태 강제 재확인 중...");
-      
+
       const currentAccount = account || window.ethereum.selectedAddress;
       if (!currentAccount) {
         showAlert("지갑을 먼저 연결해주세요.", "error");
         return;
       }
-      
+
       const doctorStatus = await isDoctor(currentAccount);
       console.log("🔄 재확인 결과:", doctorStatus);
       setIsUserDoctor(doctorStatus);
-      
+
       if (doctorStatus) {
         showAlert("✅ 의사 계정으로 확인되었습니다!", "success");
       } else {
@@ -250,11 +262,49 @@ const Home = () => {
       </Box>
 
       {/* 알림 */}
-      {alert.open && (
-        <Alert severity={alert.severity} sx={{ mb: 3 }}>
+      <Dialog
+        open={alert.open}
+        onClose={handleCloseAlert}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            position: "fixed",
+            top: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            margin: 0,
+            borderRadius: "12px",
+            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)",
+            overflow: "hidden",
+          },
+        }}
+        TransitionProps={{
+          onExited: () => setAlert({ ...alert, open: false }),
+        }}
+      >
+        <Alert
+          onClose={handleCloseAlert}
+          severity={alert.severity}
+          variant="filled"
+          sx={{
+            width: "100%",
+            padding: "12px 16px",
+            "& .MuiAlert-message": {
+              fontSize: "0.95rem",
+              fontWeight: 500,
+            },
+            "& .MuiAlert-icon": {
+              fontSize: "1.25rem",
+            },
+            "& .MuiAlert-action": {
+              padding: "0 0 0 12px",
+            },
+          }}
+        >
           {alert.message}
         </Alert>
-      )}
+      </Dialog>
 
       {/* 지갑 연결 */}
       {!account ? (
@@ -346,7 +396,11 @@ const Home = () => {
                     <Typography variant="h6" gutterBottom>
                       의사 관리
                     </Typography>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      gutterBottom
+                    >
                       Owner만 의사를 추가/제거할 수 있습니다
                     </Typography>
                     <Button
@@ -397,14 +451,21 @@ const Home = () => {
                       {records.map((record, index) => (
                         <ListItem key={index} divider>
                           <ListItemText
-                            primary={`진단: ${record.parsedData.diagnosis || "정보 없음"}`}
+                            primary={`진단: ${
+                              record.parsedData.diagnosis || "정보 없음"
+                            }`}
                             secondary={
                               <Box>
                                 <Typography variant="body2">
-                                  처방: {record.parsedData.prescription || "정보 없음"}
+                                  처방:{" "}
+                                  {record.parsedData.prescription ||
+                                    "정보 없음"}
                                 </Typography>
                                 <Typography variant="body2">
-                                  날짜: {new Date(parseInt(record.timestamp) * 1000).toLocaleString()}
+                                  날짜:{" "}
+                                  {new Date(
+                                    parseInt(record.timestamp) * 1000
+                                  ).toLocaleString()}
                                 </Typography>
                                 <Typography variant="body2" color="primary">
                                   담당의: {record.hospital}
@@ -436,7 +497,9 @@ const Home = () => {
             fullWidth
             label="진단"
             value={newRecord.diagnosis}
-            onChange={(e) => setNewRecord({ ...newRecord, diagnosis: e.target.value })}
+            onChange={(e) =>
+              setNewRecord({ ...newRecord, diagnosis: e.target.value })
+            }
             margin="normal"
             required
           />
@@ -444,7 +507,9 @@ const Home = () => {
             fullWidth
             label="처방"
             value={newRecord.prescription}
-            onChange={(e) => setNewRecord({ ...newRecord, prescription: e.target.value })}
+            onChange={(e) =>
+              setNewRecord({ ...newRecord, prescription: e.target.value })
+            }
             margin="normal"
             multiline
             rows={2}
@@ -454,7 +519,9 @@ const Home = () => {
             label="진료 날짜"
             type="date"
             value={newRecord.date}
-            onChange={(e) => setNewRecord({ ...newRecord, date: e.target.value })}
+            onChange={(e) =>
+              setNewRecord({ ...newRecord, date: e.target.value })
+            }
             margin="normal"
             InputLabelProps={{ shrink: true }}
           />
@@ -462,7 +529,9 @@ const Home = () => {
             fullWidth
             label="추가 메모"
             value={newRecord.notes}
-            onChange={(e) => setNewRecord({ ...newRecord, notes: e.target.value })}
+            onChange={(e) =>
+              setNewRecord({ ...newRecord, notes: e.target.value })
+            }
             margin="normal"
             multiline
             rows={3}
