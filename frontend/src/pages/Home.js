@@ -174,7 +174,16 @@ const Home = () => {
       }
     } catch (error) {
       console.error("의료 기록 조회 중 오류:", error);
-      showAlert("의료 기록 조회에 실패했습니다.", "error");
+
+      if (error.message === "permission_denied") {
+        showAlert(
+          "권한이 없습니다. 환자 본인 또는 의사만 조회할 수 있습니다.",
+          "error"
+        );
+        setRecords([]); // 권한이 없는 경우 기록 목록 초기화
+      } else {
+        showAlert("의료 기록 조회에 실패했습니다.", "error");
+      }
     } finally {
       setLoading(false);
     }
@@ -451,26 +460,35 @@ const Home = () => {
                       {records.map((record, index) => (
                         <ListItem key={index} divider>
                           <ListItemText
-                            primary={`진단: ${
-                              record.parsedData.diagnosis || "정보 없음"
-                            }`}
+                            primary={
+                              <Typography variant="body1" component="span">
+                                진단:{" "}
+                                {record.parsedData.diagnosis || "정보 없음"}
+                              </Typography>
+                            }
                             secondary={
-                              <Box>
-                                <Typography variant="body2">
+                              <>
+                                <Typography variant="body2" component="span">
                                   처방:{" "}
                                   {record.parsedData.prescription ||
                                     "정보 없음"}
                                 </Typography>
-                                <Typography variant="body2">
+                                <br />
+                                <Typography variant="body2" component="span">
                                   날짜:{" "}
                                   {new Date(
                                     parseInt(record.timestamp) * 1000
                                   ).toLocaleString()}
                                 </Typography>
-                                <Typography variant="body2" color="primary">
+                                <br />
+                                <Typography
+                                  variant="body2"
+                                  color="primary"
+                                  component="span"
+                                >
                                   담당의: {record.hospital}
                                 </Typography>
-                              </Box>
+                              </>
                             }
                           />
                         </ListItem>

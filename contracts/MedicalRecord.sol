@@ -89,6 +89,10 @@ contract MedicalRecord is Ownable {
             uint256 timestamp
         )
     {
+        require(
+            msg.sender == patient || doctors[msg.sender],
+            "Only the patient or a doctor can view this record"
+        );
         Record memory record = records[patient][recordId];
         return (record.data, record.signature, record.hospital, record.timestamp);
     }
