@@ -3,8 +3,8 @@ import MedicalRecordABI from "../abis/MedicalRecord.json";
 
 // 컨트랙트 주소 - 배포 후 업데이트 필요
 const MEDICAL_RECORD_ADDRESS =
-  process.env.REACT_APP_CONTRACT_ADDRESS ||
-  "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+  process.env.REACT_APP_MEDICAL_RECORD_CONTRACT_ADDRESS ||
+  "0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1";
 
 let provider;
 let signer;

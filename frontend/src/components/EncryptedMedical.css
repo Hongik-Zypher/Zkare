@@ -1,0 +1,350 @@
+/* 키 생성 관련 스타일 */
+.key-generation {
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.user-type-selection {
+    display: flex;
+    gap: 15px;
+    margin: 15px 0;
+}
+
+.user-type-selection label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    padding: 8px 12px;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+    transition: all 0.3s ease;
+}
+
+.user-type-selection input[type="radio"]:checked + label {
+    background-color: #2e7d32;
+    color: white;
+    border-color: #2e7d32;
+}
+
+.generate-button, .register-button, .download-button {
+    background-color: #2e7d32;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    margin: 10px 5px;
+    transition: background-color 0.3s ease;
+}
+
+.generate-button:hover, .register-button:hover, .download-button:hover {
+    background-color: #1b5e20;
+}
+
+.generate-button:disabled, .register-button:disabled, .download-button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+.key-textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-family: monospace;
+    font-size: 12px;
+    resize: vertical;
+}
+
+.private-key-section {
+    background: #fff3cd;
+    padding: 15px;
+    border-radius: 5px;
+    border-left: 4px solid #ffc107;
+    margin: 15px 0;
+}
+
+.warning {
+    color: #d32f2f;
+    font-weight: bold;
+    margin: 10px 0;
+}
+
+/* 환자 조회 관련 스타일 */
+.patient-lookup {
+    padding: 20px;
+}
+
+.lookup-section, .patient-section, .doctor-section {
+    margin-bottom: 25px;
+}
+
+.input-group {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.address-input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-family: monospace;
+}
+
+.lookup-button, .load-button, .submit-button {
+    background-color: #1976d2;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.lookup-button:hover, .load-button:hover, .submit-button:hover {
+    background-color: #1565c0;
+}
+
+.lookup-button:disabled, .load-button:disabled, .submit-button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+.patient-status {
+    padding: 20px;
+    border-radius: 8px;
+    margin: 20px 0;
+    border-left: 4px solid;
+}
+
+.patient-status.not-registered {
+    background-color: #ffebee;
+    border-left-color: #f44336;
+}
+
+.patient-status.new-patient {
+    background-color: #e3f2fd;
+    border-left-color: #2196f3;
+}
+
+.patient-status.existing-patient {
+    background-color: #e8f5e8;
+    border-left-color: #4caf50;
+}
+
+.medical-record-form {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    margin: 20px 0;
+}
+
+.form-row {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.form-row input, .form-row select {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+.form-column {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.form-column textarea {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    resize: vertical;
+}
+
+/* 진료기록 조회 관련 스타일 */
+.medical-record-viewer {
+    padding: 20px;
+}
+
+.private-key-section {
+    background: #fff3cd;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.key-upload {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.file-input {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+.key-status {
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.key-status.success {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.patient-selection {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.patient-info-section {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    margin: 20px 0;
+}
+
+.decrypt-button, .decrypt-all-button, .decrypt-single-button {
+    background-color: #ff9800;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin: 5px;
+    transition: background-color 0.3s ease;
+}
+
+.decrypt-button:hover, .decrypt-all-button:hover, .decrypt-single-button:hover {
+    background-color: #f57c00;
+}
+
+.decrypt-button:disabled, .decrypt-all-button:disabled, .decrypt-single-button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+.records-section {
+    margin-top: 30px;
+}
+
+.records-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.record-item {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    overflow: hidden;
+}
+
+.record-header {
+    background: #f5f5f5;
+    padding: 15px;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.record-date, .doctor-address {
+    font-size: 12px;
+    color: #666;
+}
+
+.decrypted-content, .encrypted-content {
+    padding: 20px;
+}
+
+.medical-data p {
+    margin: 8px 0;
+    line-height: 1.5;
+}
+
+.encrypted-content {
+    text-align: center;
+    color: #666;
+}
+
+.decrypted-basic-info {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    margin-top: 15px;
+}
+
+.no-records {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+}
+
+/* 공통 스타일 */
+.connect-wallet-button {
+    background-color: #2e7d32;
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    border-radius: 8px;
+    font-size: 18px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.connect-wallet-button:hover {
+    background-color: #1b5e20;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+    .form-row {
+        flex-direction: column;
+    }
+    
+    .input-group {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .records-header {
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+    }
+    
+    .record-header {
+        flex-direction: column;
+        gap: 5px;
+        align-items: flex-start;
+    }
+    
+    .patient-selection {
+        flex-direction: column;
+        align-items: stretch;
+    }
+} 

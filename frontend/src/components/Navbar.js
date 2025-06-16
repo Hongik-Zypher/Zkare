@@ -28,6 +28,19 @@ const Navbar = () => {
           >
             홈
           </Button>
+          <Button
+            color="inherit"
+            component={Link}
+            to="/encrypted"
+            sx={{ 
+              fontWeight: "medium",
+              ml: 2,
+              background: "rgba(255,255,255,0.1)",
+              border: "1px solid rgba(255,255,255,0.3)"
+            }}
+          >
+            🔐 암호화 시스템
+          </Button>
         </Box>
       </Toolbar>
     </AppBar>

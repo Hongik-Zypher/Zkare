@@ -4,6 +4,7 @@ import { ThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import Navbar from "./components/Navbar";
 import Home from "./pages/Home";
+import EncryptedMedical from "./pages/EncryptedMedical";
 import "./App.css";
 
 const theme = createTheme({
@@ -28,6 +29,7 @@ function App() {
         <Navbar />
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/encrypted" element={<EncryptedMedical />} />
           {/* 추후 필요한 페이지들을 여기에 추가 */}
         </Routes>
       </Router>
