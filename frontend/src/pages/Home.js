@@ -31,11 +31,18 @@ import {
   getAllMedicalRecords,
   addDoctor,
   removeDoctor,
+  getContractOwner,
+  isOwner,
+  getEncryptedMedicalRecordContract,
 } from "../utils/contracts";
+import { useNavigate } from 'react-router-dom';
+import { ethers } from 'ethers';
 
 const Home = () => {
-  const [account, setAccount] = useState("");
-  const [isUserDoctor, setIsUserDoctor] = useState(false);
+  const [currentAccount, setCurrentAccount] = useState("");
+  const [isConnected, setIsConnected] = useState(false);
+  const [userRole, setUserRole] = useState(null); // 'doctor' | 'patient' | 'owner' | null
+  const [isOwnerAccount, setIsOwnerAccount] = useState(false);
   const [patientAddress, setPatientAddress] = useState("");
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -59,52 +66,87 @@ const Home = () => {
   const [newDoctorAddress, setNewDoctorAddress] = useState("");
   const [removeDoctorAddress, setRemoveDoctorAddress] = useState("");
 
+  const navigate = useNavigate();
+
   useEffect(() => {
-    // 페이지 로드 시 연결된 계정 확인
     checkExistingConnection();
   }, []);
 
   const checkExistingConnection = async () => {
     try {
-      if (window.ethereum && window.ethereum.selectedAddress) {
-        console.log("🔍 기존 연결 확인 중...");
-        const account = window.ethereum.selectedAddress;
-        setAccount(account);
-
-        console.log("👨‍⚕️ 의사 상태 확인 중...");
-        const doctorStatus = await isDoctor(account);
-        console.log("👨‍⚕️ 의사 상태 결과:", doctorStatus);
-        setIsUserDoctor(doctorStatus);
-
-        if (doctorStatus) {
-          showAlert("의사 계정으로 로그인되었습니다!", "success");
-        } else {
-          showAlert("일반 사용자로 로그인되었습니다.", "info");
+      if (window.ethereum) {
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        if (accounts.length > 0) {
+          setCurrentAccount(accounts[0]);
+          setIsConnected(true);
+          await checkUserRole(accounts[0]);
         }
       }
     } catch (error) {
-      console.error("기존 연결 확인 중 오류:", error);
-      showAlert("연결 확인 중 오류가 발생했습니다.", "error");
+      console.error("연결 상태 확인 중 오류:", error);
     }
   };
 
-  // 지갑 연결
-  const handleConnectWallet = async () => {
+  const checkUserRole = async (account) => {
     try {
-      setLoading(true);
-      const account = await connectWallet();
-      setAccount(account);
+      console.log('🔍 계정 권한 확인 시작:', account);
+      
+      if (!window.ethereum) {
+        throw new Error("MetaMask가 설치되어 있지 않습니다.");
+      }
+
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+
+      // KeyRegistry 컨트랙트 초기화
+      const keyRegistryAddress = process.env.REACT_APP_KEY_REGISTRY_ADDRESS;
+      console.log('📋 KeyRegistry 주소:', keyRegistryAddress);
+
+      if (!keyRegistryAddress) {
+        throw new Error("KeyRegistry 주소가 설정되지 않았습니다.");
+      }
+
+      const keyRegistryContract = new ethers.Contract(
+        keyRegistryAddress,
+        [
+          "function isDoctor(address _user) external view returns (bool)",
+          "function owner() external view returns (address)"
+        ],
+        signer
+      );
 
       // 의사 여부 확인
-      const doctorStatus = await isDoctor(account);
-      setIsUserDoctor(doctorStatus);
+      const doctorStatus = await keyRegistryContract.isDoctor(account);
+      console.log('👨‍⚕️ 의사 여부:', doctorStatus);
+      
+      // 오너 여부 확인
+      const owner = await keyRegistryContract.owner();
+      console.log('👑 컨트랙트 오너:', owner);
+      console.log('👤 현재 계정:', account);
+      
+      const ownerStatus = owner.toLowerCase() === account.toLowerCase();
+      console.log('🔑 오너 여부:', ownerStatus);
+      
+      setIsOwnerAccount(ownerStatus);
+      setUserRole(ownerStatus ? 'owner' : (doctorStatus ? 'doctor' : 'patient'));
+      
+      console.log('✅ 최종 사용자 역할:', ownerStatus ? 'owner' : (doctorStatus ? 'doctor' : 'patient'));
+    } catch (error) {
+      console.error('❌ 사용자 역할 확인 중 오류:', error);
+      setIsOwnerAccount(false);
+      setUserRole('patient');
+    }
+  };
 
-      showAlert("지갑이 성공적으로 연결되었습니다.", "success");
+  const handleConnectWallet = async () => {
+    try {
+      const account = await connectWallet();
+      setCurrentAccount(account);
+      setIsConnected(true);
+      await checkUserRole(account);
     } catch (error) {
       console.error("지갑 연결 중 오류:", error);
-      showAlert(`지갑 연결에 실패했습니다: ${error.message}`, "error");
-    } finally {
-      setLoading(false);
+      showAlert("지갑 연결 중 오류가 발생했습니다.", "error");
     }
   };
 
@@ -134,7 +176,7 @@ const Home = () => {
       const recordData = {
         ...newRecord,
         timestamp: new Date().toISOString(),
-        doctor: account,
+        doctor: currentAccount,
       };
 
       await addMedicalRecord(patientAddress, recordData);
@@ -199,11 +241,12 @@ const Home = () => {
     try {
       setLoading(true);
       await addDoctor(newDoctorAddress);
-      showAlert("의사가 성공적으로 추가되었습니다.", "success");
+      showAlert("의사가 성공적으로 등록되었습니다.", "success");
       setNewDoctorAddress("");
+      setDoctorManagementOpen(false);
     } catch (error) {
-      console.error("의사 추가 중 오류:", error);
-      showAlert("의사 추가에 실패했습니다. Owner 권한이 필요합니다.", "error");
+      console.error("의사 등록 중 오류:", error);
+      showAlert("의사 등록에 실패했습니다.", "error");
     } finally {
       setLoading(false);
     }
@@ -235,7 +278,7 @@ const Home = () => {
       setLoading(true);
       console.log("🔄 의사 상태 강제 재확인 중...");
 
-      const currentAccount = account || window.ethereum.selectedAddress;
+      const currentAccount = this.currentAccount || window.ethereum.selectedAddress;
       if (!currentAccount) {
         showAlert("지갑을 먼저 연결해주세요.", "error");
         return;
@@ -243,7 +286,7 @@ const Home = () => {
 
       const doctorStatus = await isDoctor(currentAccount);
       console.log("🔄 재확인 결과:", doctorStatus);
-      setIsUserDoctor(doctorStatus);
+      setUserRole(doctorStatus ? 'doctor' : 'patient');
 
       if (doctorStatus) {
         showAlert("✅ 의사 계정으로 확인되었습니다!", "success");
@@ -259,370 +302,185 @@ const Home = () => {
   };
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      {/* 헤더 */}
-      <Box sx={{ textAlign: "center", mb: 4 }}>
-        <Typography variant="h3" component="h1" gutterBottom>
-          🏥 Zkare 의료기록 관리 시스템
-        </Typography>
-        <Typography variant="h6" color="text.secondary">
-          블록체인 기반의 안전한 의료기록 관리
-        </Typography>
-      </Box>
-
-      {/* 알림 */}
-      <Dialog
-        open={alert.open}
-        onClose={handleCloseAlert}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{
-          sx: {
-            position: "fixed",
-            top: "20px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            margin: 0,
-            borderRadius: "12px",
-            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)",
-            overflow: "hidden",
-          },
-        }}
-        TransitionProps={{
-          onExited: () => setAlert({ ...alert, open: false }),
-        }}
-      >
-        <Alert
-          onClose={handleCloseAlert}
-          severity={alert.severity}
-          variant="filled"
-          sx={{
-            width: "100%",
-            padding: "12px 16px",
-            "& .MuiAlert-message": {
-              fontSize: "0.95rem",
-              fontWeight: 500,
-            },
-            "& .MuiAlert-icon": {
-              fontSize: "1.25rem",
-            },
-            "& .MuiAlert-action": {
-              padding: "0 0 0 12px",
-            },
+    <Container maxWidth="lg">
+      <Box sx={{ mt: 8, mb: 4 }}>
+        <Typography 
+          variant="h2" 
+          component="h1" 
+          gutterBottom 
+          align="center"
+          sx={{ 
+            fontWeight: 700,
+            color: '#1a5f7a',
+            mb: 3
           }}
         >
-          {alert.message}
-        </Alert>
-      </Dialog>
+          안전한 의료정보 관리 시스템
+        </Typography>
+        <Typography 
+          variant="h5" 
+          align="center" 
+          color="text.secondary"
+          sx={{ mb: 6 }}
+        >
+          블록체인 기반 암호화로 안전하게 보호되는 의료정보
+        </Typography>
 
-      {/* 지갑 연결 */}
-      {!account ? (
-        <Card sx={{ mb: 3 }}>
-          <CardContent sx={{ textAlign: "center" }}>
-            <Typography variant="h5" gutterBottom>
-              지갑을 연결해주세요
-            </Typography>
+        {!isConnected ? (
+          <Box sx={{ textAlign: 'center', mt: 4 }}>
             <Button
               variant="contained"
-              onClick={handleConnectWallet}
-              disabled={loading}
               size="large"
+              onClick={handleConnectWallet}
+              sx={{
+                backgroundColor: '#2E7D32',
+                '&:hover': {
+                  backgroundColor: '#1b5e20',
+                },
+              }}
             >
-              {loading ? <CircularProgress size={24} /> : "MetaMask 연결"}
+              MetaMask 연결하기
             </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <Grid container spacing={3}>
-          {/* 계정 정보 */}
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                  {isUserDoctor ? (
-                    <LocalHospitalIcon color="primary" />
-                  ) : (
-                    <PersonIcon color="secondary" />
-                  )}
-                  <Box sx={{ flexGrow: 1 }}>
-                    <Typography variant="h6">
-                      {isUserDoctor ? "의사 계정" : "일반 사용자"}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {account}
-                    </Typography>
-                  </Box>
-                  {isUserDoctor && (
-                    <Chip label="의사" color="primary" variant="outlined" />
-                  )}
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={handleRefreshDoctorStatus}
-                    disabled={loading}
-                    sx={{ ml: 1 }}
-                  >
-                    {loading ? <CircularProgress size={16} /> : "상태 재확인"}
-                  </Button>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* 의사 기능 */}
-          {isUserDoctor && (
-            <>
-              <Grid item xs={12} md={6}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      의료 기록 추가
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      label="환자 주소"
-                      value={patientAddress}
-                      onChange={(e) => setPatientAddress(e.target.value)}
-                      margin="normal"
-                      placeholder="0x..."
-                    />
-                    <Button
-                      variant="contained"
-                      onClick={() => setAddRecordDialogOpen(true)}
-                      disabled={!patientAddress || loading}
-                      fullWidth
-                      sx={{ mt: 2 }}
-                    >
-                      의료 기록 추가
-                    </Button>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      의사 관리
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      gutterBottom
-                    >
-                      Owner만 의사를 추가/제거할 수 있습니다
-                    </Typography>
-                    <Button
-                      variant="outlined"
-                      onClick={() => setDoctorManagementOpen(true)}
-                      startIcon={<AdminPanelSettingsIcon />}
-                      fullWidth
-                    >
-                      의사 관리
-                    </Button>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </>
-          )}
-
-          {/* 의료 기록 조회 */}
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  의료 기록 조회
-                </Typography>
-                <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
-                  <TextField
-                    fullWidth
-                    label="환자 주소"
-                    value={patientAddress}
-                    onChange={(e) => setPatientAddress(e.target.value)}
-                    placeholder="0x..."
-                  />
-                  <Button
-                    variant="contained"
-                    onClick={handleGetRecords}
-                    disabled={!patientAddress || loading}
-                  >
-                    조회
-                  </Button>
-                </Box>
-
-                {/* 조회된 기록 표시 */}
-                {records.length > 0 && (
-                  <Paper sx={{ p: 2, mt: 2 }}>
-                    <Typography variant="h6" gutterBottom>
-                      의료 기록 ({records.length}개)
-                    </Typography>
-                    <List>
-                      {records.map((record, index) => (
-                        <ListItem key={index} divider>
-                          <ListItemText
-                            primary={
-                              <Typography variant="body1" component="span">
-                                진단:{" "}
-                                {record.parsedData.diagnosis || "정보 없음"}
-                              </Typography>
-                            }
-                            secondary={
-                              <>
-                                <Typography variant="body2" component="span">
-                                  처방:{" "}
-                                  {record.parsedData.prescription ||
-                                    "정보 없음"}
-                                </Typography>
-                                <br />
-                                <Typography variant="body2" component="span">
-                                  날짜:{" "}
-                                  {new Date(
-                                    parseInt(record.timestamp) * 1000
-                                  ).toLocaleString()}
-                                </Typography>
-                                <br />
-                                <Typography
-                                  variant="body2"
-                                  color="primary"
-                                  component="span"
-                                >
-                                  담당의: {record.hospital}
-                                </Typography>
-                              </>
-                            }
-                          />
-                        </ListItem>
-                      ))}
-                    </List>
-                  </Paper>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      )}
-
-      {/* 의료 기록 추가 다이얼로그 */}
-      <Dialog
-        open={addRecordDialogOpen}
-        onClose={() => setAddRecordDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>의료 기록 추가</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            label="진단"
-            value={newRecord.diagnosis}
-            onChange={(e) =>
-              setNewRecord({ ...newRecord, diagnosis: e.target.value })
-            }
-            margin="normal"
-            required
-          />
-          <TextField
-            fullWidth
-            label="처방"
-            value={newRecord.prescription}
-            onChange={(e) =>
-              setNewRecord({ ...newRecord, prescription: e.target.value })
-            }
-            margin="normal"
-            multiline
-            rows={2}
-          />
-          <TextField
-            fullWidth
-            label="진료 날짜"
-            type="date"
-            value={newRecord.date}
-            onChange={(e) =>
-              setNewRecord({ ...newRecord, date: e.target.value })
-            }
-            margin="normal"
-            InputLabelProps={{ shrink: true }}
-          />
-          <TextField
-            fullWidth
-            label="추가 메모"
-            value={newRecord.notes}
-            onChange={(e) =>
-              setNewRecord({ ...newRecord, notes: e.target.value })
-            }
-            margin="normal"
-            multiline
-            rows={3}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddRecordDialogOpen(false)}>취소</Button>
-          <Button
-            onClick={handleAddRecord}
-            variant="contained"
-            disabled={!newRecord.diagnosis || loading}
+          </Box>
+        ) : (
+          <Paper 
+            elevation={3} 
+            sx={{ 
+              p: 4, 
+              mt: 4, 
+              backgroundColor: 'rgba(46, 125, 50, 0.1)',
+              borderRadius: 2
+            }}
           >
-            {loading ? <CircularProgress size={20} /> : "추가"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+              {isOwnerAccount && (
+                <Chip 
+                  label="관리자" 
+                  color="secondary" 
+                  variant="outlined" 
+                  sx={{ ml: 'auto' }}
+                />
+              )}
+              {(userRole === 'doctor' || isOwnerAccount) && (
+                <>
+                  <LocalHospitalIcon color="primary" sx={{ fontSize: 30 }} />
+                  <Typography variant="h6">
+                    의사 계정으로 로그인되었습니다
+                  </Typography>
+                  <Chip 
+                    label="의사" 
+                    color="primary" 
+                    variant="outlined" 
+                    sx={{ ml: 'auto' }}
+                  />
+                </>
+              )}
+              {userRole === 'patient' && !isOwnerAccount && (
+                <>
+                  <PersonIcon color="secondary" sx={{ fontSize: 30 }} />
+                  <Typography variant="h6">
+                    환자 계정으로 로그인되었습니다
+                  </Typography>
+                  <Chip 
+                    label="환자" 
+                    color="secondary" 
+                    variant="outlined" 
+                    sx={{ ml: 'auto' }}
+                  />
+                </>
+              )}
+            </Box>
+            <Typography variant="body1" gutterBottom>
+              연결된 계정: {currentAccount}
+            </Typography>
+            <Typography variant="body1" sx={{ mb: 3 }}>
+              {userRole === 'doctor' 
+                ? '환자의 의료기록을 생성하고 관리할 수 있습니다.' 
+                : '본인의 의료기록을 안전하게 확인할 수 있습니다.'}
+            </Typography>
+            <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => navigate('/encrypted')}
+                fullWidth
+              >
+                의료기록 관리로 이동
+              </Button>
+              
+              {isOwnerAccount && (
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  onClick={() => setDoctorManagementOpen(true)}
+                  startIcon={<AdminPanelSettingsIcon />}
+                  fullWidth
+                >
+                  의사 등록하기
+                </Button>
+              )}
+            </Box>
+          </Paper>
+        )}
+      </Box>
 
-      {/* 의사 관리 다이얼로그 */}
-      <Dialog
-        open={doctorManagementOpen}
+      {/* 의사 등록 다이얼로그 */}
+      <Dialog 
+        open={doctorManagementOpen} 
         onClose={() => setDoctorManagementOpen(false)}
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>의사 관리</DialogTitle>
+        <DialogTitle>새로운 의사 등록</DialogTitle>
         <DialogContent>
-          <Typography variant="h6" gutterBottom>
-            의사 추가
-          </Typography>
-          <TextField
-            fullWidth
-            label="의사 주소"
-            value={newDoctorAddress}
-            onChange={(e) => setNewDoctorAddress(e.target.value)}
-            margin="normal"
-            placeholder="0x..."
-          />
-          <Button
-            variant="contained"
-            onClick={handleAddDoctor}
-            disabled={!newDoctorAddress || loading}
-            fullWidth
-            sx={{ mt: 1, mb: 3 }}
-          >
-            의사 추가
-          </Button>
-
-          <Typography variant="h6" gutterBottom>
-            의사 제거
-          </Typography>
-          <TextField
-            fullWidth
-            label="제거할 의사 주소"
-            value={removeDoctorAddress}
-            onChange={(e) => setRemoveDoctorAddress(e.target.value)}
-            margin="normal"
-            placeholder="0x..."
-          />
-          <Button
-            variant="outlined"
-            color="error"
-            onClick={handleRemoveDoctor}
-            disabled={!removeDoctorAddress || loading}
-            fullWidth
-            sx={{ mt: 1 }}
-          >
-            의사 제거
-          </Button>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              등록할 의사의 지갑 주소를 입력해주세요.
+            </Typography>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="의사 지갑 주소"
+              type="text"
+              fullWidth
+              variant="outlined"
+              value={newDoctorAddress}
+              onChange={(e) => setNewDoctorAddress(e.target.value)}
+              placeholder="0x..."
+              helperText="올바른 이더리움 주소를 입력해주세요"
+            />
+          </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDoctorManagementOpen(false)}>닫기</Button>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setDoctorManagementOpen(false)}>
+            취소
+          </Button>
+          <Button 
+            onClick={handleAddDoctor} 
+            variant="contained" 
+            color="primary"
+            disabled={!newDoctorAddress || newDoctorAddress.length !== 42}
+          >
+            등록하기
+          </Button>
         </DialogActions>
       </Dialog>
+
+      {/* 알림 스낵바 */}
+      <Snackbar 
+        open={alert.open} 
+        autoHideDuration={6000} 
+        onClose={handleCloseAlert}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseAlert} 
+          severity={alert.severity}
+          sx={{ width: '100%' }}
+        >
+          {alert.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };

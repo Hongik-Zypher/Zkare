@@ -1,154 +1,90 @@
 import React, { useState, useEffect } from 'react';
-import { ethers } from 'ethers';
+import { Box, Button, Typography, CircularProgress } from '@mui/material';
 import { generateKeyPair } from '../utils/encryption';
+import { isDoctor } from '../utils/contracts';
 
 const KeyGeneration = ({ keyRegistryContract, currentAccount }) => {
     const [loading, setLoading] = useState(false);
-    const [keyPair, setKeyPair] = useState(null);
-    const [isRegistered, setIsRegistered] = useState(false);
-    const [userType, setUserType] = useState('patient'); // 'patient' or 'doctor'
+    const [userRole, setUserRole] = useState(null);
 
-    // 공개키 등록 여부 확인
     useEffect(() => {
-        checkRegistrationStatus();
-    }, [currentAccount, keyRegistryContract]);
+        checkUserRole();
+    }, [currentAccount]);
 
-    const checkRegistrationStatus = async () => {
-        if (!keyRegistryContract || !currentAccount) return;
-        
+    const checkUserRole = async () => {
+        if (!currentAccount) return;
         try {
-            const registered = await keyRegistryContract.isPublicKeyRegistered(currentAccount);
-            setIsRegistered(registered);
+            const doctorStatus = await isDoctor(currentAccount);
+            setUserRole(doctorStatus ? 'doctor' : 'patient');
         } catch (error) {
-            console.error('등록 상태 확인 오류:', error);
+            console.error('사용자 역할 확인 중 오류:', error);
         }
     };
 
     const handleGenerateKeys = async () => {
-        setLoading(true);
-        try {
-            const keys = await generateKeyPair();
-            setKeyPair(keys);
-            
-            // 브라우저 로컬스토리지에 개인키 저장 (실제 운영에서는 더 안전한 방법 사용)
-            localStorage.setItem(`privateKey_${currentAccount}`, keys.privateKey);
-            
-            alert('키 생성이 완료되었습니다! 개인키는 안전하게 보관해주세요.');
-        } catch (error) {
-            console.error('키 생성 오류:', error);
-            alert('키 생성 중 오류가 발생했습니다.');
+        if (!keyRegistryContract || !currentAccount) {
+            alert('컨트랙트 또는 계정이 준비되지 않았습니다.');
+            return;
         }
-        setLoading(false);
-    };
 
-    const handleRegisterPublicKey = async () => {
-        if (!keyPair || !keyRegistryContract) return;
-        
         setLoading(true);
         try {
-            const isDoctor = userType === 'doctor';
-            const tx = await keyRegistryContract.registerPublicKey(keyPair.publicKey, isDoctor);
+            console.log('🔑 [키 생성] 시작');
+            const { publicKey, privateKey } = await generateKeyPair();
+            
+            // 공개키 등록
+            const tx = await keyRegistryContract.registerPublicKey(
+                publicKey,
+                userRole === 'doctor'
+            );
             await tx.wait();
             
-            alert('공개키 등록이 완료되었습니다!');
-            setIsRegistered(true);
+            // 개인키 다운로드
+            const blob = new Blob([privateKey], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `private_key_${currentAccount}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            console.log('✅ [키 생성] 완료');
+            alert('키 생성이 완료되었습니다. 개인키를 안전하게 보관해주세요.');
         } catch (error) {
-            console.error('공개키 등록 오류:', error);
-            alert('공개키 등록 중 오류가 발생했습니다.');
+            console.error('❌ [키 생성] 오류:', error);
+            alert('키 생성 중 오류가 발생했습니다.');
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
-
-    const downloadPrivateKey = () => {
-        if (!keyPair) return;
-        
-        const element = document.createElement('a');
-        const file = new Blob([keyPair.privateKey], { type: 'text/plain' });
-        element.href = URL.createObjectURL(file);
-        element.download = `private_key_${currentAccount.slice(0, 10)}.txt`;
-        document.body.appendChild(element);
-        element.click();
-        document.body.removeChild(element);
-    };
-
-    if (isRegistered) {
-        return (
-            <div className="key-generation">
-                <h3>✅ 공개키가 등록되었습니다</h3>
-                <p>귀하의 공개키는 이미 블록체인에 등록되어 있습니다.</p>
-            </div>
-        );
-    }
 
     return (
-        <div className="key-generation">
-            <h3>🔐 암호화 키 생성 및 등록</h3>
-            
-            <div className="user-type-selection">
-                <label>
-                    <input
-                        type="radio"
-                        value="patient"
-                        checked={userType === 'patient'}
-                        onChange={(e) => setUserType(e.target.value)}
-                    />
-                    환자
-                </label>
-                <label>
-                    <input
-                        type="radio"
-                        value="doctor"
-                        checked={userType === 'doctor'}
-                        onChange={(e) => setUserType(e.target.value)}
-                    />
-                    의사
-                </label>
-            </div>
-
-            {!keyPair ? (
-                <div>
-                    <p>먼저 암호화에 사용할 키 쌍을 생성해주세요.</p>
-                    <button 
-                        onClick={handleGenerateKeys} 
-                        disabled={loading}
-                        className="generate-button"
-                    >
-                        {loading ? '생성 중...' : '키 생성'}
-                    </button>
-                </div>
-            ) : (
-                <div>
-                    <h4>키 생성 완료!</h4>
-                    <div className="key-info">
-                        <h5>공개키 (블록체인에 등록됨):</h5>
-                        <textarea 
-                            value={keyPair.publicKey} 
-                            readOnly 
-                            rows={8}
-                            className="key-textarea"
-                        />
-                        
-                        <h5>개인키 (안전하게 보관하세요!):</h5>
-                        <div className="private-key-section">
-                            <button onClick={downloadPrivateKey} className="download-button">
-                                개인키 다운로드
-                            </button>
-                            <p className="warning">
-                                ⚠️ 개인키는 절대 타인에게 공개하지 마세요!
-                            </p>
-                        </div>
-                    </div>
-                    
-                    <button 
-                        onClick={handleRegisterPublicKey} 
-                        disabled={loading}
-                        className="register-button"
-                    >
-                        {loading ? '등록 중...' : '공개키 등록'}
-                    </button>
-                </div>
-            )}
-        </div>
+        <Box sx={{ p: 3, border: '1px solid #e0e0e0', borderRadius: 2, bgcolor: '#f5f5f5' }}>
+            <Typography variant="h6" gutterBottom>
+                🔑 암호화 키 생성
+            </Typography>
+            <Typography variant="body2" color="text.secondary" paragraph>
+                {userRole === 'doctor' 
+                    ? '의사용 RSA 키 쌍을 생성하여 환자 기록을 안전하게 관리하세요.' 
+                    : '환자용 RSA 키 쌍을 생성하여 의료 기록을 안전하게 보호하세요.'}
+            </Typography>
+            <Button
+                variant="contained"
+                onClick={handleGenerateKeys}
+                disabled={loading || !userRole}
+                sx={{
+                    mt: 2,
+                    backgroundColor: '#2E7D32',
+                    '&:hover': {
+                        backgroundColor: '#1b5e20',
+                    }
+                }}
+            >
+                {loading ? <CircularProgress size={24} /> : '키 생성하기'}
+            </Button>
+        </Box>
     );
 };
 
