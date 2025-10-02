@@ -35,8 +35,8 @@ import {
   isOwner,
   getEncryptedMedicalRecordContract,
 } from "../utils/contracts";
-import { useNavigate } from 'react-router-dom';
-import { ethers } from 'ethers';
+import { useNavigate } from "react-router-dom";
+import { ethers } from "ethers";
 
 const Home = () => {
   const [currentAccount, setCurrentAccount] = useState("");
@@ -75,7 +75,9 @@ const Home = () => {
   const checkExistingConnection = async () => {
     try {
       if (window.ethereum) {
-        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        const accounts = await window.ethereum.request({
+          method: "eth_accounts",
+        });
         if (accounts.length > 0) {
           setCurrentAccount(accounts[0]);
           setIsConnected(true);
@@ -89,8 +91,8 @@ const Home = () => {
 
   const checkUserRole = async (account) => {
     try {
-      console.log('🔍 계정 권한 확인 시작:', account);
-      
+      console.log("🔍 계정 권한 확인 시작:", account);
+
       if (!window.ethereum) {
         throw new Error("MetaMask가 설치되어 있지 않습니다.");
       }
@@ -100,7 +102,7 @@ const Home = () => {
 
       // KeyRegistry 컨트랙트 초기화
       const keyRegistryAddress = process.env.REACT_APP_KEY_REGISTRY_ADDRESS;
-      console.log('📋 KeyRegistry 주소:', keyRegistryAddress);
+      console.log("📋 KeyRegistry 주소:", keyRegistryAddress);
 
       if (!keyRegistryAddress) {
         throw new Error("KeyRegistry 주소가 설정되지 않았습니다.");
@@ -110,31 +112,34 @@ const Home = () => {
         keyRegistryAddress,
         [
           "function isDoctor(address _user) external view returns (bool)",
-          "function owner() external view returns (address)"
+          "function owner() external view returns (address)",
         ],
         signer
       );
 
       // 의사 여부 확인
       const doctorStatus = await keyRegistryContract.isDoctor(account);
-      console.log('👨‍⚕️ 의사 여부:', doctorStatus);
-      
+      console.log("👨‍⚕️ 의사 여부:", doctorStatus);
+
       // 오너 여부 확인
       const owner = await keyRegistryContract.owner();
-      console.log('👑 컨트랙트 오너:', owner);
-      console.log('👤 현재 계정:', account);
-      
+      console.log("👑 컨트랙트 오너:", owner);
+      console.log("👤 현재 계정:", account);
+
       const ownerStatus = owner.toLowerCase() === account.toLowerCase();
-      console.log('🔑 오너 여부:', ownerStatus);
-      
+      console.log("🔑 오너 여부:", ownerStatus);
+
       setIsOwnerAccount(ownerStatus);
-      setUserRole(ownerStatus ? 'owner' : (doctorStatus ? 'doctor' : 'patient'));
-      
-      console.log('✅ 최종 사용자 역할:', ownerStatus ? 'owner' : (doctorStatus ? 'doctor' : 'patient'));
+      setUserRole(ownerStatus ? "owner" : doctorStatus ? "doctor" : "patient");
+
+      console.log(
+        "✅ 최종 사용자 역할:",
+        ownerStatus ? "owner" : doctorStatus ? "doctor" : "patient"
+      );
     } catch (error) {
-      console.error('❌ 사용자 역할 확인 중 오류:', error);
+      console.error("❌ 사용자 역할 확인 중 오류:", error);
       setIsOwnerAccount(false);
-      setUserRole('patient');
+      setUserRole("patient");
     }
   };
 
@@ -278,7 +283,8 @@ const Home = () => {
       setLoading(true);
       console.log("🔄 의사 상태 강제 재확인 중...");
 
-      const currentAccount = this.currentAccount || window.ethereum.selectedAddress;
+      const currentAccount =
+        this.currentAccount || window.ethereum.selectedAddress;
       if (!currentAccount) {
         showAlert("지갑을 먼저 연결해주세요.", "error");
         return;
@@ -286,7 +292,7 @@ const Home = () => {
 
       const doctorStatus = await isDoctor(currentAccount);
       console.log("🔄 재확인 결과:", doctorStatus);
-      setUserRole(doctorStatus ? 'doctor' : 'patient');
+      setUserRole(doctorStatus ? "doctor" : "patient");
 
       if (doctorStatus) {
         showAlert("✅ 의사 계정으로 확인되었습니다!", "success");
@@ -304,22 +310,22 @@ const Home = () => {
   return (
     <Container maxWidth="lg">
       <Box sx={{ mt: 8, mb: 4 }}>
-        <Typography 
-          variant="h2" 
-          component="h1" 
-          gutterBottom 
+        <Typography
+          variant="h2"
+          component="h1"
+          gutterBottom
           align="center"
-          sx={{ 
+          sx={{
             fontWeight: 700,
-            color: '#1a5f7a',
-            mb: 3
+            color: "#1a5f7a",
+            mb: 3,
           }}
         >
           안전한 의료정보 관리 시스템
         </Typography>
-        <Typography 
-          variant="h5" 
-          align="center" 
+        <Typography
+          variant="h5"
+          align="center"
           color="text.secondary"
           sx={{ mb: 6 }}
         >
@@ -327,15 +333,15 @@ const Home = () => {
         </Typography>
 
         {!isConnected ? (
-          <Box sx={{ textAlign: 'center', mt: 4 }}>
+          <Box sx={{ textAlign: "center", mt: 4 }}>
             <Button
               variant="contained"
               size="large"
               onClick={handleConnectWallet}
               sx={{
-                backgroundColor: '#2E7D32',
-                '&:hover': {
-                  backgroundColor: '#1b5e20',
+                backgroundColor: "#2E7D32",
+                "&:hover": {
+                  backgroundColor: "#1b5e20",
                 },
               }}
             >
@@ -343,49 +349,49 @@ const Home = () => {
             </Button>
           </Box>
         ) : (
-          <Paper 
-            elevation={3} 
-            sx={{ 
-              p: 4, 
-              mt: 4, 
-              backgroundColor: 'rgba(46, 125, 50, 0.1)',
-              borderRadius: 2
+          <Paper
+            elevation={3}
+            sx={{
+              p: 4,
+              mt: 4,
+              backgroundColor: "rgba(46, 125, 50, 0.1)",
+              borderRadius: 2,
             }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
               {isOwnerAccount && (
-                <Chip 
-                  label="관리자" 
-                  color="secondary" 
-                  variant="outlined" 
-                  sx={{ ml: 'auto' }}
+                <Chip
+                  label="관리자"
+                  color="secondary"
+                  variant="outlined"
+                  sx={{ ml: "auto" }}
                 />
               )}
-              {(userRole === 'doctor' || isOwnerAccount) && (
+              {(userRole === "doctor" || isOwnerAccount) && (
                 <>
                   <LocalHospitalIcon color="primary" sx={{ fontSize: 30 }} />
                   <Typography variant="h6">
                     의사 계정으로 로그인되었습니다
                   </Typography>
-                  <Chip 
-                    label="의사" 
-                    color="primary" 
-                    variant="outlined" 
-                    sx={{ ml: 'auto' }}
+                  <Chip
+                    label="의사"
+                    color="primary"
+                    variant="outlined"
+                    sx={{ ml: "auto" }}
                   />
                 </>
               )}
-              {userRole === 'patient' && !isOwnerAccount && (
+              {userRole === "patient" && !isOwnerAccount && (
                 <>
                   <PersonIcon color="secondary" sx={{ fontSize: 30 }} />
                   <Typography variant="h6">
                     환자 계정으로 로그인되었습니다
                   </Typography>
-                  <Chip 
-                    label="환자" 
-                    color="secondary" 
-                    variant="outlined" 
-                    sx={{ ml: 'auto' }}
+                  <Chip
+                    label="환자"
+                    color="secondary"
+                    variant="outlined"
+                    sx={{ ml: "auto" }}
                   />
                 </>
               )}
@@ -394,20 +400,22 @@ const Home = () => {
               연결된 계정: {currentAccount}
             </Typography>
             <Typography variant="body1" sx={{ mb: 3 }}>
-              {userRole === 'doctor' 
-                ? '환자의 의료기록을 생성하고 관리할 수 있습니다.' 
-                : '본인의 의료기록을 안전하게 확인할 수 있습니다.'}
+              {userRole === "doctor"
+                ? "환자의 의료기록을 생성하고 관리할 수 있습니다."
+                : "본인의 의료기록을 안전하게 확인할 수 있습니다."}
             </Typography>
-            <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box
+              sx={{ mt: 3, display: "flex", flexDirection: "column", gap: 2 }}
+            >
               <Button
                 variant="contained"
                 color="primary"
-                onClick={() => navigate('/encrypted')}
+                onClick={() => navigate("/encrypted")}
                 fullWidth
               >
                 의료기록 관리로 이동
               </Button>
-              
+
               {isOwnerAccount && (
                 <Button
                   variant="contained"
@@ -425,8 +433,8 @@ const Home = () => {
       </Box>
 
       {/* 의사 등록 다이얼로그 */}
-      <Dialog 
-        open={doctorManagementOpen} 
+      <Dialog
+        open={doctorManagementOpen}
         onClose={() => setDoctorManagementOpen(false)}
         maxWidth="sm"
         fullWidth
@@ -452,12 +460,10 @@ const Home = () => {
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setDoctorManagementOpen(false)}>
-            취소
-          </Button>
-          <Button 
-            onClick={handleAddDoctor} 
-            variant="contained" 
+          <Button onClick={() => setDoctorManagementOpen(false)}>취소</Button>
+          <Button
+            onClick={handleAddDoctor}
+            variant="contained"
             color="primary"
             disabled={!newDoctorAddress || newDoctorAddress.length !== 42}
           >
@@ -467,16 +473,16 @@ const Home = () => {
       </Dialog>
 
       {/* 알림 스낵바 */}
-      <Snackbar 
-        open={alert.open} 
-        autoHideDuration={6000} 
+      <Snackbar
+        open={alert.open}
+        autoHideDuration={6000}
         onClose={handleCloseAlert}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
-        <Alert 
-          onClose={handleCloseAlert} 
+        <Alert
+          onClose={handleCloseAlert}
           severity={alert.severity}
-          sx={{ width: '100%' }}
+          sx={{ width: "100%" }}
         >
           {alert.message}
         </Alert>
