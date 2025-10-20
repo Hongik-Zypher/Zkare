@@ -23,6 +23,7 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import { ethers } from 'ethers';
 import { encryptMedicalRecord } from '../../utils/encryption';
+import { getPublicKey } from '../../utils/contracts';
 import KeyRegistryABI from '../../abis/KeyRegistry.json';
 import EncryptedMedicalRecordABI from '../../abis/EncryptedMedicalRecord.json';
 
@@ -160,13 +161,13 @@ function MedicalRecordCreate() {
         setLoading(true);
         setError('');
 
-        if (!medicalRecordContract || !keyRegistryContract) {
+        if (!medicalRecordContract) {
             throw new Error('컨트랙트가 초기화되지 않았습니다.');
         }
 
-        // 환자와 의사의 공개키 가져오기
-        const patientPublicKeyData = await keyRegistryContract.getPublicKey(medicalInfo.patientAddress);
-        const doctorPublicKeyData = await keyRegistryContract.getPublicKey(currentAccount);
+        // contracts.js의 함수 사용 (ENS 에러 없음)
+        const patientPublicKeyData = await getPublicKey(medicalInfo.patientAddress);
+        const doctorPublicKeyData = await getPublicKey(currentAccount);
         
         if (!patientPublicKeyData[0] || !doctorPublicKeyData[0]) {
             throw new Error('공개키를 찾을 수 없습니다.');
@@ -225,7 +226,7 @@ function MedicalRecordCreate() {
 
   const handleMedicalInfoSubmit = async () => {
     try {
-      if (!privateKeyFile || !medicalRecordContract || !keyRegistryContract) {
+      if (!privateKeyFile || !medicalRecordContract) {
         throw new Error('Required information missing');
       }
 
@@ -237,9 +238,9 @@ function MedicalRecordCreate() {
         reader.readAsText(privateKeyFile);
       });
 
-      // Get public keys for patient and doctor
-      const patientPublicKeyData = await keyRegistryContract.getPublicKey(patientAddress);
-      const doctorPublicKeyData = await keyRegistryContract.getPublicKey(currentAccount);
+      // contracts.js의 함수 사용 (ENS 에러 없음)
+      const patientPublicKeyData = await getPublicKey(patientAddress);
+      const doctorPublicKeyData = await getPublicKey(currentAccount);
       
       const patientPublicKey = patientPublicKeyData[0];
       const doctorPublicKey = doctorPublicKeyData[0];

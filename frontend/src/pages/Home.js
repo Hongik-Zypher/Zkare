@@ -95,32 +95,12 @@ const Home = () => {
         throw new Error("MetaMask가 설치되어 있지 않습니다.");
       }
 
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner();
-
-      // KeyRegistry 컨트랙트 초기화
-      const keyRegistryAddress = process.env.REACT_APP_KEY_REGISTRY_ADDRESS;
-      console.log('📋 KeyRegistry 주소:', keyRegistryAddress);
-
-      if (!keyRegistryAddress) {
-        throw new Error("KeyRegistry 주소가 설정되지 않았습니다.");
-      }
-
-      const keyRegistryContract = new ethers.Contract(
-        keyRegistryAddress,
-        [
-          "function isDoctor(address _user) external view returns (bool)",
-          "function owner() external view returns (address)"
-        ],
-        signer
-      );
-
-      // 의사 여부 확인
-      const doctorStatus = await keyRegistryContract.isDoctor(account);
+      // contracts.js의 함수 사용 (ENS 에러 없음)
+      const doctorStatus = await isDoctor(account);
       console.log('👨‍⚕️ 의사 여부:', doctorStatus);
       
       // 오너 여부 확인
-      const owner = await keyRegistryContract.owner();
+      const owner = await getContractOwner();
       console.log('👑 컨트랙트 오너:', owner);
       console.log('👤 현재 계정:', account);
       

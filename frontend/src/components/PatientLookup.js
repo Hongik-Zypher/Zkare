@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { encryptMedicalRecord } from '../utils/encryption';
+import { 
+    isDoctor as checkIsDoctor, 
+    isPublicKeyRegistered as checkIsPublicKeyRegistered,
+    getPublicKey
+} from '../utils/contracts';
 
 const PatientLookup = ({ 
     keyRegistryContract, 
@@ -11,6 +16,8 @@ const PatientLookup = ({
     const [patientInfo, setPatientInfo] = useState(null);
     const [isDoctor, setIsDoctor] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [hasDoctorPublicKey, setHasDoctorPublicKey] = useState(true);
+    const [checkingKey, setCheckingKey] = useState(true);
     
     // 진료기록 양식
     const [medicalRecordForm, setMedicalRecordForm] = useState({
@@ -29,29 +36,43 @@ const PatientLookup = ({
         notes: ''
     });
 
-    // 의사 여부 확인
+    // 의사 여부 및 공개키 등록 확인
     useEffect(() => {
         checkDoctorStatus();
-    }, [currentAccount, keyRegistryContract]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount]);
 
     const checkDoctorStatus = async () => {
-        if (!keyRegistryContract || !currentAccount) return;
+        if (!currentAccount) {
+            setCheckingKey(false);
+            return;
+        }
         
+        setCheckingKey(true);
         try {
-            const doctorStatus = await keyRegistryContract.isDoctor(currentAccount);
+            // contracts.js의 함수 사용 (ENS 에러 없음)
+            const doctorStatus = await checkIsDoctor(currentAccount);
             setIsDoctor(doctorStatus);
+            
+            const keyRegistered = await checkIsPublicKeyRegistered(currentAccount);
+            setHasDoctorPublicKey(keyRegistered);
+            
+            console.log('👨‍⚕️ 의사 상태:', doctorStatus);
+            console.log('🔑 공개키 등록 여부:', keyRegistered);
         } catch (error) {
             console.error('의사 상태 확인 오류:', error);
+        } finally {
+            setCheckingKey(false);
         }
     };
 
     const handlePatientLookup = async () => {
-        if (!patientAddress || !keyRegistryContract || !medicalRecordContract) return;
+        if (!patientAddress || !medicalRecordContract) return;
         
         setLoading(true);
         try {
-            // 환자의 공개키 등록 여부 확인
-            const isRegistered = await keyRegistryContract.isPublicKeyRegistered(patientAddress);
+            // contracts.js의 함수 사용 (ENS 에러 없음)
+            const isRegistered = await checkIsPublicKeyRegistered(patientAddress);
             
             if (!isRegistered) {
                 setPatientFound('not_registered');
@@ -81,15 +102,15 @@ const PatientLookup = ({
     };
 
     const handleSubmitMedicalRecord = async () => {
-        if (!patientAddress || !keyRegistryContract || !medicalRecordContract) return;
+        if (!patientAddress || !medicalRecordContract) return;
         
         console.log('📝 [진료기록 등록] 시작');
         
         setLoading(true);
         try {
-            // 환자와 의사의 공개키 가져오기
-            const patientPublicKeyData = await keyRegistryContract.getPublicKey(patientAddress);
-            const doctorPublicKeyData = await keyRegistryContract.getPublicKey(currentAccount);
+            // contracts.js의 함수 사용 (ENS 에러 없음)
+            const patientPublicKeyData = await getPublicKey(patientAddress);
+            const doctorPublicKeyData = await getPublicKey(currentAccount);
             
             const patientPublicKey = patientPublicKeyData[0]; // key
             const doctorPublicKey = doctorPublicKeyData[0]; // key
@@ -181,6 +202,18 @@ const PatientLookup = ({
         setLoading(false);
     };
 
+    // 키 확인 중
+    if (checkingKey) {
+        return (
+            <div className="patient-lookup">
+                <div style={{ textAlign: 'center', padding: '40px' }}>
+                    <p>의사 권한 확인 중...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // 의사가 아닌 경우
     if (!isDoctor) {
         return (
             <div className="patient-lookup">
@@ -194,6 +227,49 @@ const PatientLookup = ({
                     <h3 style={{ color: '#d32f2f' }}>🚫 접근 권한이 없습니다</h3>
                     <p>이 기능은 <strong>의사만</strong> 사용할 수 있습니다.</p>
                     <p>의사로 등록된 계정으로 로그인해주세요.</p>
+                </div>
+            </div>
+        );
+    }
+
+    // 공개키가 등록되지 않은 경우
+    if (!hasDoctorPublicKey) {
+        return (
+            <div className="patient-lookup">
+                <div style={{ 
+                    border: '2px solid #ff9800', 
+                    borderRadius: '8px', 
+                    padding: '30px', 
+                    backgroundColor: '#fff3e0',
+                    textAlign: 'center'
+                }}>
+                    <h3 style={{ color: '#f57c00', marginBottom: '20px' }}>
+                        ⚠️ 먼저 키를 생성해야 합니다
+                    </h3>
+                    <p style={{ fontSize: '16px', marginBottom: '10px' }}>
+                        환자 진료기록을 작성하려면 먼저 RSA 키 쌍을 생성하고 공개키를 등록해야 합니다.
+                    </p>
+                    <p style={{ fontSize: '14px', color: '#666', marginBottom: '30px' }}>
+                        의사용 개인키로 환자의 의료기록을 암호화하여 안전하게 저장할 수 있습니다.
+                    </p>
+                    <button
+                        onClick={() => {
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                            alert('페이지 상단의 "🔑 암호화 키 등록이 필요합니다" 섹션에서 키를 생성해주세요.');
+                        }}
+                        style={{
+                            padding: '12px 30px',
+                            fontSize: '16px',
+                            backgroundColor: '#2e7d32',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontWeight: 'bold'
+                        }}
+                    >
+                        키 생성 섹션으로 이동
+                    </button>
                 </div>
             </div>
         );

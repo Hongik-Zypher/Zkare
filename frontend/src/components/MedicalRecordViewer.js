@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { decryptMedicalRecord } from '../utils/encryption';
+import { isDoctor as checkIsDoctor, isPublicKeyRegistered as checkIsPublicKeyRegistered } from '../utils/contracts';
 
 const MedicalRecordViewer = ({ 
     keyRegistryContract, 
@@ -13,21 +14,42 @@ const MedicalRecordViewer = ({
     const [isDoctor, setIsDoctor] = useState(false);
     const [selectedPatient, setSelectedPatient] = useState('');
     const [decryptedRecords, setDecryptedRecords] = useState([]);
+    const [hasPublicKey, setHasPublicKey] = useState(true);
+    const [checkingKey, setCheckingKey] = useState(true);
 
     useEffect(() => {
         checkUserStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentAccount]);
 
     const checkUserStatus = async () => {
-        if (!keyRegistryContract || !currentAccount) return;
+        if (!currentAccount) {
+            setCheckingKey(false);
+            return;
+        }
         
+        setCheckingKey(true);
         try {
             console.log('🔍 사용자 상태 확인 중...', currentAccount);
-            const doctorStatus = await keyRegistryContract.isDoctor(currentAccount);
+            
+            // contracts.js의 함수 사용 (ENS 에러 없음)
+            const keyRegistered = await checkIsPublicKeyRegistered(currentAccount);
+            setHasPublicKey(keyRegistered);
+            console.log('🔑 공개키 등록 여부:', keyRegistered);
+            
+            if (!keyRegistered) {
+                console.log('⚠️ 공개키가 등록되지 않았습니다. 키 생성이 필요합니다.');
+                setCheckingKey(false);
+                return;
+            }
+            
+            const doctorStatus = await checkIsDoctor(currentAccount);
             setIsDoctor(doctorStatus);
             console.log('👤 사용자 역할:', doctorStatus ? '의사' : '환자');
         } catch (error) {
             console.error('❌ 사용자 상태 확인 오류:', error);
+        } finally {
+            setCheckingKey(false);
         }
     };
 
@@ -174,6 +196,61 @@ const MedicalRecordViewer = ({
     const formatDate = (timestamp) => {
         return new Date(parseInt(timestamp) * 1000).toLocaleString('ko-KR');
     };
+
+    // 키 확인 중
+    if (checkingKey) {
+        return (
+            <div className="medical-record-viewer">
+                <div style={{ textAlign: 'center', padding: '40px' }}>
+                    <p>키 상태 확인 중...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // 공개키가 등록되지 않은 경우
+    if (!hasPublicKey) {
+        return (
+            <div className="medical-record-viewer">
+                <div style={{ 
+                    border: '2px solid #ff9800', 
+                    borderRadius: '8px', 
+                    padding: '30px', 
+                    backgroundColor: '#fff3e0',
+                    textAlign: 'center'
+                }}>
+                    <h3 style={{ color: '#f57c00', marginBottom: '20px' }}>
+                        ⚠️ 먼저 키를 생성해야 합니다
+                    </h3>
+                    <p style={{ fontSize: '16px', marginBottom: '10px' }}>
+                        진료기록을 조회하려면 먼저 RSA 키 쌍을 생성하고 공개키를 등록해야 합니다.
+                    </p>
+                    <p style={{ fontSize: '14px', color: '#666', marginBottom: '30px' }}>
+                        개인키는 안전하게 다운로드되며, 이 키로만 암호화된 의료기록을 복호화할 수 있습니다.
+                    </p>
+                    <button
+                        onClick={() => {
+                            // 같은 페이지 상단으로 스크롤하거나 키 생성 섹션으로 안내
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                            alert('페이지 상단의 "🔑 암호화 키 등록이 필요합니다" 섹션에서 키를 생성해주세요.');
+                        }}
+                        style={{
+                            padding: '12px 30px',
+                            fontSize: '16px',
+                            backgroundColor: '#2e7d32',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontWeight: 'bold'
+                        }}
+                    >
+                        키 생성 섹션으로 이동
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="medical-record-viewer">

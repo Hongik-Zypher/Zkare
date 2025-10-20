@@ -10,6 +10,7 @@
     "build": "cd frontend && npm run build",
     "test": "jest",
     "deploy": "npx hardhat run scripts/deploy_contracts.js --network localhost",
+    "deploy:encrypted": "npx hardhat run scripts/deploy_encrypted_contracts.js --network localhost",
     "setup": "node scripts/setup-env.js"
   },
   "keywords": [

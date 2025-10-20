@@ -1,11 +1,21 @@
 import { ethers } from "ethers";
 import MedicalRecordABI from "../abis/MedicalRecord.json";
 import EncryptedMedicalRecordABI from '../abis/EncryptedMedicalRecord.json';
+import KeyRegistryABI from '../abis/KeyRegistry.json';
+import KeyRecoveryABI from '../abis/KeyRecovery.json';
 import { encryptMedicalRecord, decryptMedicalRecord } from './encryption';
 
 // 컨트랙트 주소 - 배포 후 업데이트 필요
 const MEDICAL_RECORD_ADDRESS = process.env.REACT_APP_MEDICAL_RECORD_CONTRACT_ADDRESS;
 const ENCRYPTED_MEDICAL_RECORD_ADDRESS = process.env.REACT_APP_ENCRYPTED_MEDICAL_RECORD_ADDRESS;
+const KEY_REGISTRY_ADDRESS = process.env.REACT_APP_KEY_REGISTRY_CONTRACT_ADDRESS;
+const KEY_RECOVERY_ADDRESS = process.env.REACT_APP_KEY_RECOVERY_CONTRACT_ADDRESS;
+
+// 디버깅: 환경 변수 확인
+console.log('🔧 환경 변수 확인:');
+console.log('KEY_REGISTRY_ADDRESS:', KEY_REGISTRY_ADDRESS);
+console.log('ENCRYPTED_MEDICAL_RECORD_ADDRESS:', ENCRYPTED_MEDICAL_RECORD_ADDRESS);
+console.log('KEY_RECOVERY_ADDRESS:', KEY_RECOVERY_ADDRESS);
 
 let provider;
 let signer;
@@ -25,7 +35,12 @@ export const initializeContracts = async () => {
         await window.ethereum.request({ method: "eth_requestAccounts" });
 
         console.log("🔌 Provider 생성 중...");
-        provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+        // 네트워크 설정을 명시적으로 지정하여 ENS 에러 방지
+        provider = new ethers.providers.Web3Provider(window.ethereum, {
+            chainId: 31337,
+            name: 'localhost',
+            ensAddress: null // ENS 비활성화
+        });
 
         // 네트워크 강제 새로고침
         await provider.send("eth_requestAccounts", []);
@@ -108,21 +123,26 @@ export const getCurrentAccount = async () => {
   }
 };
 
-// 의사 여부 확인 - 여러 방법으로 시도
+// 의사 여부 확인 - KeyRegistry 컨트랙트 사용 (JsonRpcProvider로 ENS 우회)
 export const isDoctor = async (address) => {
     try {
         console.log('🔍 의사 권한 확인 시작:', address);
         
-        const contract = await getEncryptedMedicalRecordContract();
-        console.log('📋 컨트랙트 상태:', contract ? '초기화됨' : '초기화되지 않음');
-        
-        if (!contract) {
-            console.error('❌ 컨트랙트가 초기화되지 않았습니다.');
+        if (!KEY_REGISTRY_ADDRESS) {
+            console.error('❌ KeyRegistry 주소가 설정되지 않았습니다.');
             return false;
         }
-
-        // 의사 확인 함수가 있는지 확인
-        console.log('📋 컨트랙트 메서드:', Object.keys(contract));
+        
+        // JsonRpcProvider 직접 사용 - ENS 완전 우회
+        const jsonRpcProvider = new ethers.providers.JsonRpcProvider('http://localhost:8545', {
+            name: 'localhost',
+            chainId: 31337
+        });
+        const contract = new ethers.Contract(
+            KEY_REGISTRY_ADDRESS,
+            KeyRegistryABI.abi,
+            jsonRpcProvider
+        );
         
         const doctorStatus = await contract.isDoctor(address);
         console.log('👨‍⚕️ 의사 여부:', doctorStatus);
@@ -317,7 +337,12 @@ export const getEncryptedMedicalRecordContract = async () => {
 
         console.log('📋 컨트랙트 주소:', ENCRYPTED_MEDICAL_RECORD_ADDRESS);
         
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        // 네트워크 설정을 명시적으로 지정하여 ENS 에러 방지
+        const provider = new ethers.providers.Web3Provider(window.ethereum, {
+            chainId: 31337,
+            name: 'localhost',
+            ensAddress: null // ENS 비활성화
+        });
         const signer = provider.getSigner();
         
         const contract = new ethers.Contract(
@@ -376,4 +401,280 @@ export const isOwner = async (address) => {
     }
 };
 
-export { MEDICAL_RECORD_ADDRESS };
+// KeyRegistry 컨트랙트 가져오기
+export const getKeyRegistryContract = async () => {
+    try {
+        if (!KEY_REGISTRY_ADDRESS) {
+            throw new Error("KeyRegistry 컨트랙트 주소가 설정되지 않았습니다.");
+        }
+
+        // JsonRpcProvider 사용 - ENS 완전 우회
+        const web3Provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = web3Provider.getSigner();
+        
+        return new ethers.Contract(
+            KEY_REGISTRY_ADDRESS,
+            KeyRegistryABI.abi,
+            signer
+        );
+    } catch (error) {
+        console.error('❌ KeyRegistry 컨트랙트 초기화 오류:', error);
+        throw error;
+    }
+};
+
+// KeyRecovery 컨트랙트 가져오기
+export const getKeyRecoveryContract = async () => {
+    try {
+        if (!KEY_RECOVERY_ADDRESS) {
+            throw new Error("KeyRecovery 컨트랙트 주소가 설정되지 않았습니다.");
+        }
+
+        // JsonRpcProvider 사용 - ENS 완전 우회
+        const web3Provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = web3Provider.getSigner();
+        
+        return new ethers.Contract(
+            KEY_RECOVERY_ADDRESS,
+            KeyRecoveryABI.abi,
+            signer
+        );
+    } catch (error) {
+        console.error('❌ KeyRecovery 컨트랙트 초기화 오류:', error);
+        throw error;
+    }
+};
+
+// 보호자 설정
+export const setGuardians = async (guardianAddresses, guardianNames, guardianContacts) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const tx = await contract.setGuardians(guardianAddresses, guardianNames, guardianContacts);
+        const receipt = await tx.wait();
+        console.log('✅ 보호자 설정 완료:', receipt);
+        return receipt;
+    } catch (error) {
+        console.error('❌ 보호자 설정 오류:', error);
+        throw error;
+    }
+};
+
+// 복구 요청
+export const requestRecovery = async () => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const tx = await contract.requestRecovery();
+        const receipt = await tx.wait();
+        
+        // 이벤트에서 requestId 추출
+        const event = receipt.events?.find(e => e.event === 'RecoveryRequested');
+        const requestId = event?.args?.requestId;
+        
+        console.log('✅ 복구 요청 완료:', { receipt, requestId });
+        return { receipt, requestId };
+    } catch (error) {
+        console.error('❌ 복구 요청 오류:', error);
+        throw error;
+    }
+};
+
+// 보호자 승인
+export const approveRecovery = async (requestId) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const tx = await contract.approveRecovery(requestId);
+        const receipt = await tx.wait();
+        console.log('✅ 복구 승인 완료:', receipt);
+        return receipt;
+    } catch (error) {
+        console.error('❌ 복구 승인 오류:', error);
+        throw error;
+    }
+};
+
+// 보호자 거부
+export const rejectRecovery = async (requestId) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const tx = await contract.rejectRecovery(requestId);
+        const receipt = await tx.wait();
+        console.log('✅ 복구 거부 완료:', receipt);
+        return receipt;
+    } catch (error) {
+        console.error('❌ 복구 거부 오류:', error);
+        throw error;
+    }
+};
+
+// 복구 완료 (새 키로 업데이트)
+export const completeRecovery = async (requestId, newPublicKey) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const tx = await contract.completeRecovery(requestId, newPublicKey);
+        const receipt = await tx.wait();
+        console.log('✅ 복구 완료:', receipt);
+        return receipt;
+    } catch (error) {
+        console.error('❌ 복구 완료 오류:', error);
+        throw error;
+    }
+};
+
+// 복구 요청 취소
+export const cancelRecovery = async (requestId) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const tx = await contract.cancelRecovery(requestId);
+        const receipt = await tx.wait();
+        console.log('✅ 복구 취소 완료:', receipt);
+        return receipt;
+    } catch (error) {
+        console.error('❌ 복구 취소 오류:', error);
+        throw error;
+    }
+};
+
+// 복구 요청 상태 조회
+export const getRecoveryStatus = async (requestId) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const status = await contract.getRecoveryStatus(requestId);
+        return {
+            user: status.user,
+            timestamp: status.timestamp.toNumber(),
+            expiryTime: status.expiryTime.toNumber(),
+            approvalCount: status.approvalCount.toNumber(),
+            isCompleted: status.isCompleted,
+            isCancelled: status.isCancelled
+        };
+    } catch (error) {
+        console.error('❌ 복구 상태 조회 오류:', error);
+        throw error;
+    }
+};
+
+// 보호자 목록 조회
+export const getGuardians = async (userAddress) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const guardians = await contract.getGuardians(userAddress);
+        return {
+            addresses: guardians.addresses,
+            names: guardians.names,
+            contacts: guardians.contacts,
+            isActive: guardians.isActive
+        };
+    } catch (error) {
+        console.error('❌ 보호자 목록 조회 오류:', error);
+        throw error;
+    }
+};
+
+// 활성 복구 요청 조회
+export const getActiveRecoveryRequest = async (userAddress) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const requestId = await contract.getActiveRecoveryRequest(userAddress);
+        return requestId;
+    } catch (error) {
+        console.error('❌ 활성 복구 요청 조회 오류:', error);
+        throw error;
+    }
+};
+
+// 보호자 설정 여부 확인
+export const hasGuardians = async (userAddress) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const hasGuardiansSet = await contract.hasGuardians(userAddress);
+        return hasGuardiansSet;
+    } catch (error) {
+        console.error('❌ 보호자 설정 여부 확인 오류:', error);
+        throw error;
+    }
+};
+
+// 복구 가능 여부 확인
+export const canCompleteRecovery = async (requestId) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const canComplete = await contract.canCompleteRecovery(requestId);
+        return canComplete;
+    } catch (error) {
+        console.error('❌ 복구 가능 여부 확인 오류:', error);
+        throw error;
+    }
+};
+
+// 공개키 등록 여부 확인
+export const isPublicKeyRegistered = async (userAddress) => {
+    try {
+        if (!KEY_REGISTRY_ADDRESS) {
+            console.error('❌ KeyRegistry 주소가 설정되지 않았습니다.');
+            return false;
+        }
+        
+        // JsonRpcProvider 직접 사용 - ENS 완전 우회
+        const jsonRpcProvider = new ethers.providers.JsonRpcProvider('http://localhost:8545', {
+            name: 'localhost',
+            chainId: 31337
+        });
+        const contract = new ethers.Contract(
+            KEY_REGISTRY_ADDRESS,
+            KeyRegistryABI.abi,
+            jsonRpcProvider
+        );
+        
+        const isRegistered = await contract.isPublicKeyRegistered(userAddress);
+        console.log(`🔍 공개키 등록 여부 (${userAddress.substring(0, 10)}...):`, isRegistered);
+        return isRegistered;
+    } catch (error) {
+        console.error('❌ 공개키 등록 여부 확인 오류:', error);
+        return false;
+    }
+};
+
+// 공개키 가져오기 - ENS 에러 방지
+export const getPublicKey = async (userAddress) => {
+    try {
+        if (!KEY_REGISTRY_ADDRESS) {
+            console.error('❌ KeyRegistry 주소가 설정되지 않았습니다.');
+            throw new Error('KeyRegistry 주소가 설정되지 않았습니다.');
+        }
+        
+        // JsonRpcProvider 직접 사용 - ENS 완전 우회
+        const jsonRpcProvider = new ethers.providers.JsonRpcProvider('http://localhost:8545', {
+            name: 'localhost',
+            chainId: 31337
+        });
+        const contract = new ethers.Contract(
+            KEY_REGISTRY_ADDRESS,
+            KeyRegistryABI.abi,
+            jsonRpcProvider
+        );
+        
+        const publicKeyData = await contract.getPublicKey(userAddress);
+        console.log(`🔑 공개키 가져오기 성공 (${userAddress.substring(0, 10)}...)`);
+        return publicKeyData;
+    } catch (error) {
+        console.error('❌ 공개키 가져오기 오류:', error);
+        throw error;
+    }
+};
+
+// 보호자의 응답 상태 조회
+export const getGuardianResponse = async (requestId, guardianAddress) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const response = await contract.getGuardianResponse(requestId, guardianAddress);
+        return {
+            hasApproved: response.hasApproved,
+            hasRejected: response.hasRejected
+        };
+    } catch (error) {
+        console.error('❌ 보호자 응답 상태 조회 오류:', error);
+        throw error;
+    }
+};
+
+export { MEDICAL_RECORD_ADDRESS, KEY_REGISTRY_ADDRESS, KEY_RECOVERY_ADDRESS };

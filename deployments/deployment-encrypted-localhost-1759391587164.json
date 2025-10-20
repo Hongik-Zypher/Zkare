@@ -1,0 +1,18 @@
+{
+  "network": "localhost",
+  "timestamp": "2025-10-02T07:53:07.123Z",
+  "contracts": {
+    "keyRegistry": {
+      "address": "0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6",
+      "name": "KeyRegistry"
+    },
+    "encryptedMedicalRecord": {
+      "address": "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318",
+      "name": "EncryptedMedicalRecord"
+    },
+    "keyRecovery": {
+      "address": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
+      "name": "KeyRecovery"
+    }
+  }
+}

@@ -16,6 +16,7 @@ import KeyGeneration from '../components/KeyGeneration';
 import PatientLookup from '../components/PatientLookup';
 import MedicalRecordViewer from '../components/MedicalRecordViewer';
 import { testEncryptionDecryption } from '../utils/encryption';
+import { isDoctor as checkIsDoctor, isPublicKeyRegistered as checkIsPublicKeyRegistered } from '../utils/contracts';
 import '../components/EncryptedMedical.css';
 
 // ABI imports (실제 컨트랙트 배포 후 ABI 파일들을 추가해야 함)
@@ -64,10 +65,9 @@ function TabPanel({ children, value, index, ...other }) {
     );
 }
 
-const EncryptedMedical = () => {
-    const [currentAccount, setCurrentAccount] = useState('');
+const EncryptedMedical = ({ currentAccount: propCurrentAccount }) => {
+    const [currentAccount, setCurrentAccount] = useState(propCurrentAccount || '');
     const [provider, setProvider] = useState(null);
-    const [signer, setSigner] = useState(null);
     const [keyRegistryContract, setKeyRegistryContract] = useState(null);
     const [medicalRecordContract, setMedicalRecordContract] = useState(null);
     const [isConnected, setIsConnected] = useState(false);
@@ -76,25 +76,49 @@ const EncryptedMedical = () => {
     const [doctorTabValue, setDoctorTabValue] = useState(0);
     const [patientTabValue, setPatientTabValue] = useState(0);
 
+    // App.js에서 전달받은 currentAccount가 변경되면 업데이트
+    useEffect(() => {
+        if (propCurrentAccount && propCurrentAccount !== currentAccount) {
+            setCurrentAccount(propCurrentAccount);
+            setIsConnected(true);
+        }
+    }, [propCurrentAccount, currentAccount]);
+
     useEffect(() => {
         initializeWeb3();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
-        if (isConnected && keyRegistryContract && currentAccount) {
+        if (currentAccount) {
             checkUserRole();
         }
-    }, [isConnected, keyRegistryContract, currentAccount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentAccount]);
 
     const initializeWeb3 = async () => {
         try {
+            console.log('🚀 initializeWeb3 시작');
             if (window.ethereum) {
-                const provider = new ethers.providers.Web3Provider(window.ethereum);
-                setProvider(provider);
+                // 네트워크 설정을 명시적으로 지정하여 ENS 에러 방지
+                const web3Provider = new ethers.providers.Web3Provider(window.ethereum, {
+                    chainId: 31337,
+                    name: 'localhost',
+                    ensAddress: null // ENS 비활성화
+                });
 
-                const accounts = await provider.listAccounts();
-                if (accounts.length > 0) {
+                // App.js에서 currentAccount가 전달되었으면 바로 컨트랙트 초기화
+                if (propCurrentAccount) {
+                    console.log('✅ propCurrentAccount 발견:', propCurrentAccount);
                     await connectWallet();
+                } else {
+                    const accounts = await web3Provider.listAccounts();
+                    console.log('💼 연결된 계정들:', accounts);
+                    if (accounts.length > 0) {
+                        await connectWallet();
+                    } else {
+                        console.log('⚠️ 연결된 계정 없음');
+                    }
                 }
             } else {
                 alert('MetaMask를 설치해주세요!');
@@ -111,32 +135,65 @@ const EncryptedMedical = () => {
                 return;
             }
 
-            await window.ethereum.request({ method: 'eth_requestAccounts' });
-            const provider = new ethers.providers.Web3Provider(window.ethereum);
-            const signer = provider.getSigner();
-            const account = await signer.getAddress();
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            const account = accounts[0];
+            
+            // JsonRpcProvider 사용 - ENS 완전 우회 (network 정보 명시)
+            const jsonRpcProvider = new ethers.providers.JsonRpcProvider('http://localhost:8545', {
+                name: 'localhost',
+                chainId: 31337
+            });
+            const web3Provider = new ethers.providers.Web3Provider(window.ethereum);
+            const web3Signer = web3Provider.getSigner();
 
-            setProvider(provider);
-            setSigner(signer);
+            // Provider 저장
+            setProvider(jsonRpcProvider);
             setCurrentAccount(account);
             setIsConnected(true);
 
-            // 컨트랙트 인스턴스 생성
-            const keyRegistry = new ethers.Contract(
+            // 컨트랙트 인스턴스 생성 - JsonRpcProvider로 읽기, Web3Provider로 쓰기
+            const keyRegistryRead = new ethers.Contract(
                 KEY_REGISTRY_ADDRESS,
                 KeyRegistryABI,
-                signer
+                jsonRpcProvider
             );
-            const medicalRecord = new ethers.Contract(
+            
+            const keyRegistryWrite = new ethers.Contract(
+                KEY_REGISTRY_ADDRESS,
+                KeyRegistryABI,
+                web3Signer
+            );
+            
+            const medicalRecordWrite = new ethers.Contract(
                 ENCRYPTED_MEDICAL_RECORD_ADDRESS,
                 EncryptedMedicalRecordABI,
-                signer
+                web3Signer
             );
 
-            setKeyRegistryContract(keyRegistry);
-            setMedicalRecordContract(medicalRecord);
+            // 쓰기용 컨트랙트 저장 (읽기는 keyRegistryRead 사용)
+            setKeyRegistryContract(keyRegistryWrite);
+            setMedicalRecordContract(medicalRecordWrite);
 
             console.log('지갑 연결 성공:', account);
+            
+            // 키 등록 여부 즉시 확인 - contracts.js의 함수 사용 (ENS 없음)
+            try {
+                console.log('🔍 키 등록 여부 확인 중...');
+                const isRegistered = await checkIsPublicKeyRegistered(account);
+                setIsPublicKeyRegistered(isRegistered);
+                console.log('🔑 공개키 등록 여부:', isRegistered);
+
+                if (isRegistered) {
+                    const isDoctorAccount = await checkIsDoctor(account);
+                    setUserRole(isDoctorAccount ? 'doctor' : 'patient');
+                    console.log('👤 사용자 역할:', isDoctorAccount ? 'doctor' : 'patient');
+                } else {
+                    setUserRole(null);
+                    console.log('⚠️ 공개키가 등록되지 않았습니다.');
+                }
+            } catch (roleError) {
+                console.error('역할 확인 오류:', roleError);
+            }
         } catch (error) {
             console.error('지갑 연결 오류:', error);
             alert('지갑 연결에 실패했습니다.');
@@ -145,12 +202,22 @@ const EncryptedMedical = () => {
 
     const checkUserRole = async () => {
         try {
-            const isRegistered = await keyRegistryContract.isPublicKeyRegistered(currentAccount);
+            if (!currentAccount) {
+                console.log('⚠️ 계정이 없습니다.');
+                return;
+            }
+
+            console.log('🔍 역할 확인 중:', currentAccount);
+            
+            // contracts.js의 함수 사용 (ENS 없음)
+            const isRegistered = await checkIsPublicKeyRegistered(currentAccount);
             setIsPublicKeyRegistered(isRegistered);
+            console.log('📋 등록 여부:', isRegistered);
 
             if (isRegistered) {
-                const isDoctor = await keyRegistryContract.isDoctor(currentAccount);
-                setUserRole(isDoctor ? 'doctor' : 'patient');
+                const isDoctorAccount = await checkIsDoctor(currentAccount);
+                setUserRole(isDoctorAccount ? 'doctor' : 'patient');
+                console.log('👤 역할:', isDoctorAccount ? 'doctor' : 'patient');
             } else {
                 setUserRole(null);
             }
@@ -281,15 +348,19 @@ const EncryptedMedical = () => {
             {!isPublicKeyRegistered && (
                 <Card sx={{ mb: 3, border: '2px solid #ff9800' }}>
                     <CardContent>
-                        <Typography variant="h5" gutterBottom color="warning.main">
+                        <Typography variant="h5" gutterBottom color="warning">
                             🔑 암호화 키 등록이 필요합니다
                         </Typography>
                         <Typography variant="body1" sx={{ mb: 2 }}>
                             시스템을 사용하기 전에 먼저 RSA 키 쌍을 생성하고 공개키를 등록해주세요.
                         </Typography>
                         <KeyGeneration
-                            keyRegistryContract={keyRegistryContract}
                             currentAccount={currentAccount}
+                            onKeyRegistered={() => {
+                                console.log('🎉 키 등록 완료! 상태 업데이트 중...');
+                                setIsPublicKeyRegistered(true);
+                                checkUserRole();
+                            }}
                         />
                     </CardContent>
                 </Card>
