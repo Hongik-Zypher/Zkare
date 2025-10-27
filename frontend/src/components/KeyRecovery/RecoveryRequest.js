@@ -28,7 +28,8 @@ import {
     getRecoveryStatus,
     getGuardians,
     getActiveRecoveryRequest,
-    cancelRecovery
+    cancelRecovery,
+    hasUserData
 } from '../../utils/contracts';
 
 const RecoveryRequest = ({ currentAccount, onRecoveryComplete }) => {
@@ -39,12 +40,26 @@ const RecoveryRequest = ({ currentAccount, onRecoveryComplete }) => {
     const [activeRequest, setActiveRequest] = useState(null);
     const [recoveryStatus, setRecoveryStatus] = useState(null);
     const [timeRemaining, setTimeRemaining] = useState(0);
+    const [hasUserDataSet, setHasUserDataSet] = useState(false);
+    
 
     useEffect(() => {
         loadGuardians();
         checkActiveRequest();
+        checkUserData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentAccount]);
+
+    const checkUserData = async () => {
+        try {
+            console.log('🔍 [디버깅] hasUserData 체크 시작, 계정:', currentAccount);
+            const userDataSet = await hasUserData(currentAccount);
+            console.log('🔍 [디버깅] hasUserData 결과:', userDataSet);
+            setHasUserDataSet(userDataSet);
+        } catch (error) {
+            console.error('❌ UserData 확인 오류:', error);
+        }
+    };
 
     useEffect(() => {
         let interval;
@@ -100,8 +115,11 @@ const RecoveryRequest = ({ currentAccount, onRecoveryComplete }) => {
         setSuccess('');
 
         try {
-            console.log('🔐 키 복구 요청 시작');
-            const result = await requestRecovery();
+            console.log('🔐 키 복구 요청 시작 (개인키 불필요!)');
+            
+            // 블록체인에 저장된 데이터로 복구 요청 생성
+            const { requestId } = await requestRecovery();
+            console.log('✅ 복구 요청 생성 완료:', requestId);
             
             setSuccess('키 복구 요청이 생성되었습니다! 이제 보호자들에게 연락하여 승인을 요청하세요.');
             
@@ -289,6 +307,57 @@ const RecoveryRequest = ({ currentAccount, onRecoveryComplete }) => {
 
     const renderRequestForm = () => {
         if (activeRequest) return null;
+
+        // UserData가 설정되지 않은 경우 (기존 방식으로만 guardian 설정됨)
+        if (!hasUserDataSet) {
+            return (
+                <Card>
+                    <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                            <Security color="warning" sx={{ mr: 1 }} />
+                            <Typography variant="h6">
+                                키 복구를 사용할 수 없습니다
+                            </Typography>
+                        </Box>
+
+                        <Alert severity="warning" sx={{ mb: 2 }}>
+                            <Typography variant="h6" gutterBottom>
+                                ⚠️ 새로운 키 생성이 필요합니다
+                            </Typography>
+                            <Typography variant="body2" paragraph>
+                                현재 계정은 기존 방식으로 보호자가 설정되어 있어, SSS(Shamir's Secret Sharing) 조각이 블록체인에 저장되지 않았습니다.
+                            </Typography>
+                            <Typography variant="body2" paragraph>
+                                키 복구 기능을 사용하려면 다음 단계를 따라주세요:
+                            </Typography>
+                            <Typography variant="body2" component="div">
+                                1. "암호화된 의료 기록" 페이지로 이동<br/>
+                                2. "키 생성하기" 버튼 클릭<br/>
+                                3. 새 키 생성 시 보호자 정보 입력<br/>
+                                4. SSS 조각이 자동으로 블록체인에 저장됨
+                            </Typography>
+                        </Alert>
+
+                        <Button
+                            variant="contained"
+                            color="primary"
+                            size="large"
+                            href="/encrypted"
+                            sx={{ mr: 2 }}
+                        >
+                            키 생성 페이지로 이동
+                        </Button>
+                        
+                        <Button
+                            variant="outlined"
+                            onClick={checkUserData}
+                        >
+                            상태 새로고침
+                        </Button>
+                    </CardContent>
+                </Card>
+            );
+        }
 
         return (
             <Card>

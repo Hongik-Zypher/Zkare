@@ -445,7 +445,7 @@ export const getKeyRecoveryContract = async () => {
     }
 };
 
-// 보호자 설정
+// 보호자 설정 (기존 방식)
 export const setGuardians = async (guardianAddresses, guardianNames, guardianContacts) => {
     try {
         const contract = await getKeyRecoveryContract();
@@ -459,7 +459,35 @@ export const setGuardians = async (guardianAddresses, guardianNames, guardianCon
     }
 };
 
-// 복구 요청
+// 보호자 설정 + SSS 조각 저장 (새 방식 - 키 생성 시 사용)
+export const setGuardiansWithShares = async (
+    guardianAddresses, 
+    guardianNames, 
+    guardianContacts,
+    encryptedPrivateKey,
+    iv,
+    guardianShares
+) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const tx = await contract.setGuardiansWithShares(
+            guardianAddresses, 
+            guardianNames, 
+            guardianContacts,
+            encryptedPrivateKey,
+            iv,
+            guardianShares
+        );
+        const receipt = await tx.wait();
+        console.log('✅ 보호자 + SSS 조각 설정 완료:', receipt);
+        return receipt;
+    } catch (error) {
+        console.error('❌ 보호자 + SSS 조각 설정 오류:', error);
+        throw error;
+    }
+};
+
+// 복구 요청 (파라미터 없음! 블록체인 데이터 사용)
 export const requestRecovery = async () => {
     try {
         const contract = await getKeyRecoveryContract();
@@ -478,11 +506,11 @@ export const requestRecovery = async () => {
     }
 };
 
-// 보호자 승인
-export const approveRecovery = async (requestId) => {
+// 보호자 승인 (복호화된 조각 제출)
+export const approveRecovery = async (requestId, decryptedShare) => {
     try {
         const contract = await getKeyRecoveryContract();
-        const tx = await contract.approveRecovery(requestId);
+        const tx = await contract.approveRecovery(requestId, decryptedShare);
         const receipt = await tx.wait();
         console.log('✅ 복구 승인 완료:', receipt);
         return receipt;
@@ -506,11 +534,11 @@ export const rejectRecovery = async (requestId) => {
     }
 };
 
-// 복구 완료 (새 키로 업데이트)
-export const completeRecovery = async (requestId, newPublicKey) => {
+// 복구 완료 (SSS 방식 - 공개키 변경 없음)
+export const completeRecovery = async (requestId) => {
     try {
         const contract = await getKeyRecoveryContract();
-        const tx = await contract.completeRecovery(requestId, newPublicKey);
+        const tx = await contract.completeRecovery(requestId);
         const receipt = await tx.wait();
         console.log('✅ 복구 완료:', receipt);
         return receipt;
@@ -673,6 +701,70 @@ export const getGuardianResponse = async (requestId, guardianAddress) => {
         };
     } catch (error) {
         console.error('❌ 보호자 응답 상태 조회 오류:', error);
+        throw error;
+    }
+};
+
+// userData 설정 여부 확인
+export const hasUserData = async (userAddress) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const hasData = await contract.hasUserData(userAddress);
+        console.log(`🔍 UserData 설정 여부 (${userAddress.substring(0, 10)}...):`, hasData);
+        return hasData;
+    } catch (error) {
+        console.error('❌ UserData 확인 오류:', error);
+        return false;
+    }
+};
+
+// 보호자가 자신의 암호화된 조각 조회
+export const getMyShare = async (requestId) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const encryptedShare = await contract.getMyShare(requestId);
+        console.log('✅ 암호화된 조각 조회 완료');
+        return encryptedShare;
+    } catch (error) {
+        console.error('❌ 암호화된 조각 조회 오류:', error);
+        throw error;
+    }
+};
+
+// 복구 데이터 조회 (암호화된 개인키, IV)
+export const getRecoveryData = async (requestId) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const data = await contract.getRecoveryData(requestId);
+        console.log('✅ 복구 데이터 조회 완료');
+        return {
+            encryptedPrivateKey: data.encryptedPrivateKey,
+            iv: data.iv
+        };
+    } catch (error) {
+        console.error('❌ 복구 데이터 조회 오류:', error);
+        throw error;
+    }
+};
+
+// 복호화된 조각들 조회 (사용자만 가능)
+export const getDecryptedShares = async (requestId) => {
+    try {
+        const contract = await getKeyRecoveryContract();
+        const result = await contract.getDecryptedShares(requestId);
+        
+        // 빈 문자열이 아닌 조각들만 필터링
+        const decryptedShares = [];
+        for (let i = 0; i < result.decryptedShares.length; i++) {
+            if (result.decryptedShares[i] && result.decryptedShares[i].length > 0) {
+                decryptedShares.push(result.decryptedShares[i]);
+            }
+        }
+        
+        console.log('✅ 복호화된 조각 조회 완료:', decryptedShares.length, '개');
+        return decryptedShares;
+    } catch (error) {
+        console.error('❌ 복호화된 조각 조회 오류:', error);
         throw error;
     }
 };

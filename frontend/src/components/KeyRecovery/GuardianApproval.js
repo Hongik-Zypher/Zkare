@@ -32,8 +32,10 @@ import {
     approveRecovery,
     rejectRecovery,
     getRecoveryStatus,
-    getGuardians
+    getGuardians,
+    getMyShare
 } from '../../utils/contracts';
+import { decryptShareWithPrivateKey } from '../../utils/secretSharing';
 
 const GuardianApproval = ({ currentAccount, requestId }) => {
     const [loading, setLoading] = useState(false);
@@ -44,6 +46,9 @@ const GuardianApproval = ({ currentAccount, requestId }) => {
     const [guardians, setGuardians] = useState(null);
     const [timeRemaining, setTimeRemaining] = useState(0);
     const [confirmDialog, setConfirmDialog] = useState({ open: false, action: null });
+    const [privateKeyFile, setPrivateKeyFile] = useState(null);
+    const [showPrivateKeyDialog, setShowPrivateKeyDialog] = useState(false);
+    const [processingStep, setProcessingStep] = useState('');
 
     useEffect(() => {
         if (requestId) {
@@ -89,17 +94,62 @@ const GuardianApproval = ({ currentAccount, requestId }) => {
         }
     };
 
-    const handleApprove = async () => {
+    const handleApproveClick = () => {
         setConfirmDialog({ open: false, action: null });
+        setShowPrivateKeyDialog(true);
+    };
+
+    const handlePrivateKeyUpload = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            setPrivateKeyFile(file);
+            setError('');
+        }
+    };
+
+    const handleApprove = async () => {
+        if (!privateKeyFile) {
+            setError('개인키 파일을 선택해주세요.');
+            return;
+        }
+
         setLoading(true);
         setError('');
         setSuccess('');
 
         try {
-            console.log('✅ 복구 승인 시작:', requestId);
-            await approveRecovery(requestId);
+            console.log('🔐 복구 승인 + 조각 복호화 시작:', requestId);
             
-            setSuccess('키 복구를 승인했습니다.');
+            // 1. 개인키 파일 읽기
+            setProcessingStep('개인키 파일 읽는 중...');
+            const reader = new FileReader();
+            const privateKeyContent = await new Promise((resolve, reject) => {
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (e) => reject(e);
+                reader.readAsText(privateKeyFile);
+            });
+            console.log('✅ 개인키 파일 읽기 완료');
+            
+            // 2. 블록체인에서 암호화된 조각 가져오기
+            setProcessingStep('블록체인에서 암호화된 조각 가져오는 중...');
+            const encryptedShare = await getMyShare(requestId);
+            console.log('✅ 암호화된 조각 가져오기 완료');
+            console.log('   암호화된 조각 길이:', encryptedShare.length);
+            
+            // 3. 개인키로 조각 복호화
+            setProcessingStep('개인키로 조각 복호화 중...');
+            const decryptedShare = await decryptShareWithPrivateKey(encryptedShare, privateKeyContent);
+            console.log('✅ 조각 복호화 완료');
+            console.log('   복호화된 조각 길이:', decryptedShare.length);
+            
+            // 4. 복호화된 조각과 함께 승인
+            setProcessingStep('블록체인에 승인 및 복호화된 조각 제출 중...');
+            await approveRecovery(requestId, decryptedShare);
+            console.log('✅ 승인 완료 (복호화된 조각 제출됨)');
+            
+            setSuccess('✨ 키 복구를 승인했습니다! (SSS 조각이 복호화되어 블록체인에 저장되었습니다)');
+            setShowPrivateKeyDialog(false);
+            setPrivateKeyFile(null);
             
             // 상태 새로고침
             await loadRecoveryStatus();
@@ -109,6 +159,7 @@ const GuardianApproval = ({ currentAccount, requestId }) => {
             setError(`복구 승인 중 오류가 발생했습니다: ${error.message}`);
         } finally {
             setLoading(false);
+            setProcessingStep('');
         }
     };
 
@@ -299,8 +350,19 @@ const GuardianApproval = ({ currentAccount, requestId }) => {
                             </Typography>
                         </Alert>
 
+                        <Alert severity="info" sx={{ mb: 3 }}>
+                            <Typography variant="subtitle1" gutterBottom>
+                                🔐 <strong>Shamir's Secret Sharing (SSS)</strong>
+                            </Typography>
+                            <Typography variant="body2">
+                                승인 시 자동으로 다음 작업이 진행됩니다:<br/>
+                                1. 보호자의 개인키로 암호화된 조각 복호화<br/>
+                                2. 복호화된 조각을 블록체인에 안전하게 저장<br/>
+                                3. 2명 이상 승인 시 사용자가 원래 키 복구 가능
+                            </Typography>
+                        </Alert>
+
                         <Typography variant="body1" sx={{ mb: 3 }}>
-                            승인하면 해당 사용자가 새로운 개인키를 생성할 수 있게 됩니다.
                             3명 중 2명의 승인이 필요합니다.
                         </Typography>
 
@@ -330,10 +392,10 @@ const GuardianApproval = ({ currentAccount, requestId }) => {
                                 color="success"
                                 size="large"
                                 startIcon={<CheckCircle />}
-                                onClick={() => setConfirmDialog({ open: true, action: 'approve' })}
+                                onClick={handleApproveClick}
                                 disabled={loading}
                             >
-                                승인
+                                승인 (조각 복호화)
                             </Button>
                             
                             <Button
@@ -351,20 +413,95 @@ const GuardianApproval = ({ currentAccount, requestId }) => {
                 </Card>
             )}
 
-            {/* 확인 다이얼로그 */}
+            {/* 개인키 업로드 다이얼로그 (승인용) */}
             <Dialog
-                open={confirmDialog.open}
-                onClose={() => setConfirmDialog({ open: false, action: null })}
+                open={showPrivateKeyDialog}
+                onClose={() => !loading && setShowPrivateKeyDialog(false)}
+                maxWidth="sm"
+                fullWidth
             >
                 <DialogTitle>
-                    {confirmDialog.action === 'approve' ? '복구 승인 확인' : '복구 거부 확인'}
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Security sx={{ mr: 1 }} color="primary" />
+                        보호자 개인키 업로드
+                    </Box>
                 </DialogTitle>
                 <DialogContent>
+                    <Alert severity="info" sx={{ mb: 3 }}>
+                        <Typography variant="subtitle2" gutterBottom>
+                            🔐 <strong>SSS 조각 복호화</strong>
+                        </Typography>
+                        <Typography variant="body2">
+                            보호자의 개인키로 암호화된 조각을 자동으로 복호화하여 블록체인에 저장합니다.
+                        </Typography>
+                    </Alert>
+
+                    {processingStep && (
+                        <Alert severity="info" sx={{ mb: 3 }}>
+                            {processingStep}
+                        </Alert>
+                    )}
+                    
+                    <Typography variant="body1" gutterBottom sx={{ mb: 2 }}>
+                        키 생성 시 다운로드한 보호자 개인키 파일을 선택해주세요:
+                    </Typography>
+                    
+                    <input
+                        type="file"
+                        accept=".txt,.pem"
+                        onChange={handlePrivateKeyUpload}
+                        style={{ display: 'none' }}
+                        id="guardian-private-key-upload"
+                        disabled={loading}
+                    />
+                    <label htmlFor="guardian-private-key-upload">
+                        <Button
+                            variant="outlined"
+                            component="span"
+                            fullWidth
+                            disabled={loading}
+                            startIcon={<Security />}
+                        >
+                            개인키 파일 선택
+                        </Button>
+                    </label>
+                    
+                    {privateKeyFile && (
+                        <Paper sx={{ p: 2, mt: 2, bgcolor: 'grey.50' }}>
+                            <Typography variant="body2">
+                                선택된 파일: {privateKeyFile.name}
+                            </Typography>
+                        </Paper>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button 
+                        onClick={() => setShowPrivateKeyDialog(false)}
+                        disabled={loading}
+                    >
+                        취소
+                    </Button>
+                    <Button 
+                        onClick={handleApprove}
+                        variant="contained"
+                        color="success"
+                        disabled={!privateKeyFile || loading}
+                        startIcon={loading ? <CircularProgress size={20} /> : <CheckCircle />}
+                    >
+                        {loading ? '처리 중...' : '승인하기'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* 거부 확인 다이얼로그 */}
+            <Dialog
+                open={confirmDialog.open && confirmDialog.action === 'reject'}
+                onClose={() => setConfirmDialog({ open: false, action: null })}
+            >
+                <DialogTitle>복구 거부 확인</DialogTitle>
+                <DialogContent>
                     <Typography>
-                        {confirmDialog.action === 'approve' 
-                            ? '정말로 이 키 복구 요청을 승인하시겠습니까? 승인 후에는 취소할 수 없습니다.'
-                            : '정말로 이 키 복구 요청을 거부하시겠습니까?'
-                        }
+                        정말로 이 키 복구 요청을 거부하시겠습니까?
                     </Typography>
                 </DialogContent>
                 <DialogActions>
@@ -375,12 +512,12 @@ const GuardianApproval = ({ currentAccount, requestId }) => {
                         취소
                     </Button>
                     <Button
-                        onClick={confirmDialog.action === 'approve' ? handleApprove : handleReject}
-                        color={confirmDialog.action === 'approve' ? 'success' : 'error'}
+                        onClick={handleReject}
+                        color="error"
                         variant="contained"
                         disabled={loading}
                     >
-                        {loading ? <CircularProgress size={20} /> : '확인'}
+                        {loading ? <CircularProgress size={20} /> : '거부'}
                     </Button>
                 </DialogActions>
             </Dialog>

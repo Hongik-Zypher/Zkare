@@ -1,17 +1,17 @@
 {
   "network": "localhost",
-  "timestamp": "2025-10-02T07:06:52.883Z",
+  "timestamp": "2025-10-27T04:06:39.987Z",
   "contracts": {
     "keyRegistry": {
-      "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "address": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707",
       "name": "KeyRegistry"
     },
     "encryptedMedicalRecord": {
-      "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+      "address": "0x0165878A594ca255338adfa4d48449f69242Eb8F",
       "name": "EncryptedMedicalRecord"
     },
     "keyRecovery": {
-      "address": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+      "address": "0xa513E6E4b8f2a923D98304ec87F64353C4D5C853",
       "name": "KeyRecovery"
     }
   }
