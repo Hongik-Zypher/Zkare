@@ -8,8 +8,8 @@ import { encryptMedicalRecord, decryptMedicalRecord } from './encryption';
 // 컨트랙트 주소 - 배포 후 업데이트 필요
 const MEDICAL_RECORD_ADDRESS = process.env.REACT_APP_MEDICAL_RECORD_CONTRACT_ADDRESS;
 const ENCRYPTED_MEDICAL_RECORD_ADDRESS = process.env.REACT_APP_ENCRYPTED_MEDICAL_RECORD_ADDRESS;
-const KEY_REGISTRY_ADDRESS = process.env.REACT_APP_KEY_REGISTRY_CONTRACT_ADDRESS;
-const KEY_RECOVERY_ADDRESS = process.env.REACT_APP_KEY_RECOVERY_CONTRACT_ADDRESS;
+const KEY_REGISTRY_ADDRESS = process.env.REACT_APP_KEY_REGISTRY_ADDRESS;
+const KEY_RECOVERY_ADDRESS = process.env.REACT_APP_KEY_RECOVERY_ADDRESS;
 
 // 디버깅: 환경 변수 확인
 console.log('🔧 환경 변수 확인:');
