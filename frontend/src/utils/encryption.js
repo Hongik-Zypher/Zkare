@@ -24,7 +24,11 @@ function getPublicKeyFromPrivateKey(privateKeyHex) {
 // MetaMask로부터 공개키 가져오기
 export async function getPublicKeyFromMetaMask(address) {
     try {
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const provider = new ethers.providers.Web3Provider(window.ethereum, {
+            chainId: 31337,
+            name: 'localhost',
+            ensAddress: null // ENS 비활성화
+        });
         const signer = provider.getSigner();
         const currentAddress = await signer.getAddress();
         

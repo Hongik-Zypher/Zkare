@@ -103,7 +103,11 @@ function MedicalRecordCreate() {
           throw new Error('MetaMask is not installed');
         }
 
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const provider = new ethers.providers.Web3Provider(window.ethereum, {
+          chainId: 31337,
+          name: 'localhost',
+          ensAddress: null // ENS 비활성화
+        });
         const signer = provider.getSigner();
         const account = await signer.getAddress();
         setCurrentAccount(account);

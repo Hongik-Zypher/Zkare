@@ -10,7 +10,8 @@ contract EncryptedMedicalRecord is Ownable {
     
     struct PatientInfo {
         string name;
-        string encryptedBasicInfo;  // 암호화된 기본정보 (키, 몸무게, 혈액형, 주민번호 등)
+        string ipfsCid;           // IPFS Content Identifier (암호화된 기본정보 위치)
+        string dataHash;          // 암호화된 데이터의 SHA-256 해시 (무결성 검증용)
         string encryptedDoctorKey;  // 의사 공개키로 암호화된 대칭키
         string encryptedPatientKey; // 환자 공개키로 암호화된 대칭키
         uint256 timestamp;
@@ -18,7 +19,8 @@ contract EncryptedMedicalRecord is Ownable {
     }
     
     struct MedicalRecord {
-        string encryptedData;       // 대칭키로 암호화된 진료기록
+        string ipfsCid;            // IPFS Content Identifier (암호화된 진료기록 위치)
+        string dataHash;           // 암호화된 데이터의 SHA-256 해시 (무결성 검증용)
         string encryptedDoctorKey;  // 의사 공개키로 암호화된 대칭키
         string encryptedPatientKey; // 환자 공개키로 암호화된 대칭키
         address doctor;             // 진료한 의사 주소
@@ -46,7 +48,8 @@ contract EncryptedMedicalRecord is Ownable {
     function registerPatient(
         address _patient,
         string memory _name,
-        string memory _encryptedBasicInfo,
+        string memory _ipfsCid,
+        string memory _dataHash,
         string memory _encryptedDoctorKey,
         string memory _encryptedPatientKey
     ) external {
@@ -56,7 +59,8 @@ contract EncryptedMedicalRecord is Ownable {
         
         patientInfo[_patient] = PatientInfo({
             name: _name,
-            encryptedBasicInfo: _encryptedBasicInfo,
+            ipfsCid: _ipfsCid,
+            dataHash: _dataHash,
             encryptedDoctorKey: _encryptedDoctorKey,
             encryptedPatientKey: _encryptedPatientKey,
             timestamp: block.timestamp,
@@ -69,7 +73,8 @@ contract EncryptedMedicalRecord is Ownable {
     // 진료기록 추가
     function addMedicalRecord(
         address _patient,
-        string memory _encryptedData,
+        string memory _ipfsCid,
+        string memory _dataHash,
         string memory _encryptedDoctorKey,
         string memory _encryptedPatientKey
     ) external {
@@ -79,7 +84,8 @@ contract EncryptedMedicalRecord is Ownable {
         
         uint256 recordId = recordCounts[_patient];
         medicalRecords[_patient][recordId] = MedicalRecord({
-            encryptedData: _encryptedData,
+            ipfsCid: _ipfsCid,
+            dataHash: _dataHash,
             encryptedDoctorKey: _encryptedDoctorKey,
             encryptedPatientKey: _encryptedPatientKey,
             doctor: msg.sender,
@@ -94,7 +100,8 @@ contract EncryptedMedicalRecord is Ownable {
     // 환자 기본정보 조회
     function getPatientInfo(address _patient) external view returns (
         string memory name,
-        string memory encryptedBasicInfo,
+        string memory ipfsCid,
+        string memory dataHash,
         string memory encryptedDoctorKey,
         string memory encryptedPatientKey,
         uint256 timestamp,
@@ -108,7 +115,8 @@ contract EncryptedMedicalRecord is Ownable {
         PatientInfo memory info = patientInfo[_patient];
         return (
             info.name,
-            info.encryptedBasicInfo,
+            info.ipfsCid,
+            info.dataHash,
             info.encryptedDoctorKey,
             info.encryptedPatientKey,
             info.timestamp,
@@ -118,7 +126,8 @@ contract EncryptedMedicalRecord is Ownable {
     
     // 진료기록 조회
     function getMedicalRecord(address _patient, uint256 _recordId) external view returns (
-        string memory encryptedData,
+        string memory ipfsCid,
+        string memory dataHash,
         string memory encryptedDoctorKey,
         string memory encryptedPatientKey,
         address doctor,
@@ -132,7 +141,8 @@ contract EncryptedMedicalRecord is Ownable {
         
         MedicalRecord memory record = medicalRecords[_patient][_recordId];
         return (
-            record.encryptedData,
+            record.ipfsCid,
+            record.dataHash,
             record.encryptedDoctorKey,
             record.encryptedPatientKey,
             record.doctor,
