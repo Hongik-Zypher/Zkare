@@ -1,11 +1,72 @@
+/**
+ * ============================================================================
+ * 하이브리드 암호화 시스템 (Hybrid Encryption System)
+ * ============================================================================
+ * 
+ * @fileoverview
+ * RSA-OAEP 2048-bit + AES-256-GCM 하이브리드 암호화 구현.
+ * 의료 기록 암호화 및 키 관리를 위한 고급 암호화 시스템.
+ * 
+ * @description
+ * **하이브리드 암호화 구조:**
+ * 1. 대칭키(AES) 생성 - 빠른 대용량 데이터 암호화
+ * 2. AES로 의료 기록 암호화
+ * 3. RSA로 AES 키 암호화 - 안전한 키 전달
+ * 4. 암호화된 데이터 + 암호화된 AES 키 저장
+ * 
+ * **사용 알고리즘:**
+ * - **RSA-OAEP 2048-bit**: 비대칭 암호화 (키 암호화용)
+ *   - OAEP padding: Optimal Asymmetric Encryption Padding
+ *   - SHA-256 해시 함수 사용
+ * - **AES-256-GCM**: 대칭 암호화 (데이터 암호화용)
+ *   - GCM: Galois/Counter Mode (인증 암호화)
+ *   - 256-bit 키 (32 bytes)
+ *   - 96-bit IV (12 bytes)
+ * 
+ * **보안 특성:**
+ * - 🔐 기밀성: RSA-OAEP + AES-256-GCM
+ * - ✅ 무결성: GCM의 인증 태그
+ * - 🔑 키 관리: RSA 공개키로 안전한 키 전달
+ * - 👥 다중 수신자: 여러 공개키로 동일 AES 키 암호화 가능
+ * 
+ * **용도:**
+ * - 의사와 환자 모두 의료 기록 열람 가능
+ * - 각자의 개인키로 AES 키 복호화
+ * - 복호화된 AES 키로 의료 기록 복호화
+ * 
+ * @references
+ * - FIPS 197: AES (Advanced Encryption Standard)
+ * - RFC 8017: PKCS #1 - RSA Cryptography Specifications
+ * - NIST SP 800-38D: GCM (Galois/Counter Mode)
+ * 
+ * @author Zkare Team
+ * @version 1.0.0
+ * @date 2025-10-27
+ * @license MIT
+ */
+
 import { ethers } from 'ethers';
 
-// 버퍼를 16진수 문자열로 변환
+// ============================================================================
+// 유틸리티 함수 (Utility Functions)
+// ============================================================================
+
+/**
+ * ArrayBuffer를 16진수 문자열로 변환
+ * 
+ * @param {ArrayBuffer} buffer - 변환할 버퍼
+ * @returns {string} 16진수 문자열 (0x 접두사 포함)
+ */
 const bufferToHex = (buffer) => {
     return ethers.utils.hexlify(new Uint8Array(buffer));
 };
 
-// 16진수 문자열을 버퍼로 변환
+/**
+ * 16진수 문자열을 Uint8Array로 변환
+ * 
+ * @param {string} hex - 16진수 문자열 (0x 접두사 있어도 됨)
+ * @returns {Uint8Array} 바이트 배열
+ */
 const hexToBuffer = (hex) => {
     return ethers.utils.arrayify(hex);
 };
@@ -44,12 +105,29 @@ export async function getPublicKeyFromMetaMask(address) {
     }
 }
 
-// 버퍼를 Base64로 변환
+/**
+ * ArrayBuffer를 Base64 문자열로 변환
+ * 
+ * @param {ArrayBuffer|Uint8Array} buffer - 변환할 버퍼
+ * @returns {string} Base64 인코딩된 문자열
+ * 
+ * @example
+ * const buffer = new Uint8Array([72, 101, 108, 108, 111]);
+ * bufferToBase64(buffer);  // "SGVsbG8="
+ */
 const bufferToBase64 = (buffer) => {
     return btoa(String.fromCharCode(...new Uint8Array(buffer)));
 };
 
-// Base64를 버퍼로 변환
+/**
+ * Base64 문자열을 Uint8Array로 변환
+ * 
+ * @param {string} base64 - Base64 인코딩된 문자열
+ * @returns {Uint8Array} 바이트 배열
+ * 
+ * @example
+ * base64ToBuffer("SGVsbG8=");  // Uint8Array [72, 101, 108, 108, 111]
+ */
 const base64ToBuffer = (base64) => {
     const binaryString = atob(base64);
     const len = binaryString.length;
@@ -60,22 +138,88 @@ const base64ToBuffer = (base64) => {
     return bytes;
 };
 
-// 공개키를 PEM 형식으로 변환
+/**
+ * RSA 공개키를 PEM 형식으로 변환
+ * 
+ * @description
+ * DER 형식의 공개키를 PEM(Privacy-Enhanced Mail) 형식으로 변환.
+ * PEM은 Base64로 인코딩하고 헤더/푸터를 추가하며, 64자마다 줄바꿈.
+ * 
+ * @param {ArrayBuffer} publicKeyBuffer - DER 형식의 공개키
+ * @returns {string} PEM 형식의 공개키
+ * 
+ * @example
+ * // 출력:
+ * // -----BEGIN PUBLIC KEY-----
+ * // MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
+ * // -----END PUBLIC KEY-----
+ */
 const formatPublicKeyToPEM = (publicKeyBuffer) => {
     const base64 = bufferToBase64(publicKeyBuffer);
     return `-----BEGIN PUBLIC KEY-----\n${base64.match(/.{1,64}/g).join('\n')}\n-----END PUBLIC KEY-----`;
 };
 
-// PEM 형식의 공개키를 버퍼로 변환
+/**
+ * PEM 형식의 공개키를 버퍼로 변환
+ * 
+ * @description
+ * PEM 형식에서 헤더/푸터와 공백을 제거하고 Base64 디코딩하여
+ * DER 형식의 바이너리 데이터로 변환.
+ * 
+ * @param {string} pem - PEM 형식의 공개키
+ * @returns {Uint8Array} DER 형식의 공개키 바이트 배열
+ */
 const pemToBuffer = (pem) => {
     const base64 = pem
         .replace('-----BEGIN PUBLIC KEY-----', '')
         .replace('-----END PUBLIC KEY-----', '')
-        .replace(/\s/g, '');
+        .replace(/\s/g, '');  // 모든 공백 제거
     return base64ToBuffer(base64);
 };
 
-// RSA 키 쌍 생성
+// ============================================================================
+// RSA 키 쌍 생성 (RSA Key Pair Generation)
+// ============================================================================
+
+/**
+ * RSA-OAEP 2048-bit 키 쌍 생성
+ * 
+ * @description
+ * Web Crypto API를 사용하여 RSA-OAEP 키 쌍을 생성.
+ * 의료 데이터 암호화용 AES 키를 안전하게 교환하기 위해 사용.
+ * 
+ * **RSA-OAEP 파라미터:**
+ * - 키 길이: 2048 bits (256 bytes)
+ * - 공개 지수: 65537 (0x010001, 일반적인 값)
+ * - 해시 함수: SHA-256
+ * - Padding: OAEP (Optimal Asymmetric Encryption Padding)
+ * 
+ * **보안 고려사항:**
+ * - 2048-bit는 2030년까지 안전한 것으로 권장됨 (NIST)
+ * - OAEP padding으로 선택 평문 공격(CPA) 방어
+ * 
+ * @async
+ * @returns {Promise<{publicKey: string, privateKey: string}>}
+ *   - publicKey: PEM 형식 공개키 (블록체인 및 타인에게 공개)
+ *   - privateKey: Base64 형식 개인키 (사용자만 보관, 절대 공유 안됨)
+ * @throws {Error} 키 생성 실패 시
+ * 
+ * @example
+ * const keyPair = await generateKeyPair();
+ * console.log(keyPair.publicKey);   // -----BEGIN PUBLIC KEY-----...
+ * console.log(keyPair.privateKey);  // Base64 문자열
+ * 
+ * // 공개키는 블록체인에 등록
+ * await keyRegistryContract.registerKey(keyPair.publicKey);
+ * 
+ * // 개인키는 안전하게 보관 (로컬 스토리지 또는 파일 다운로드)
+ * localStorage.setItem('privateKey', keyPair.privateKey);
+ * 
+ * @security
+ * - ⚠️ 개인키는 절대 서버에 전송하지 않음
+ * - ⚠️ 개인키 분실 시 데이터 복구 불가
+ * - ✅ 키 복구 시스템(SSS)으로 안전하게 백업
+ */
 export const generateKeyPair = async () => {
     try {
         // RSA-OAEP 키 쌍 생성
@@ -190,7 +334,93 @@ const decryptWithPrivateKey = async (encryptedData, privateKeyBase64) => {
     }
 };
 
-// 의료 기록 암호화
+// ============================================================================
+// 의료 기록 암호화/복호화 (Medical Record Encryption/Decryption)
+// ============================================================================
+
+/**
+ * 의료 기록 하이브리드 암호화
+ * 
+ * @description
+ * 의료 기록을 의사와 환자 모두가 볼 수 있도록 하이브리드 방식으로 암호화.
+ * 
+ * **암호화 과정:**
+ * 1. AES-256 대칭키 생성 (랜덤)
+ * 2. IV (Initialization Vector) 생성 (12 bytes, 랜덤)
+ * 3. 의료 기록을 JSON 문자열로 변환
+ * 4. AES-GCM으로 의료 기록 암호화
+ * 5. AES 키를 의사의 RSA 공개키로 암호화
+ * 6. 동일한 AES 키를 환자의 RSA 공개키로 암호화
+ * 7. 암호화된 기록 + 2개의 암호화된 AES 키 + IV 반환
+ * 
+ * **다중 수신자 암호화:**
+ * - 동일한 AES 키를 여러 RSA 공개키로 암호화
+ * - 의사와 환자 각자의 개인키로 AES 키 복호화 가능
+ * - 복호화된 AES 키로 의료 기록 접근
+ * 
+ * **보안 특성:**
+ * - 기밀성: 의사와 환자만 열람 가능
+ * - 무결성: GCM의 인증 태그로 변조 검증
+ * - 효율성: AES로 대용량 데이터 빠르게 암호화
+ * - 안전성: RSA-OAEP로 키 안전하게 전달
+ * 
+ * @async
+ * @param {Object} record - 암호화할 의료 기록 객체
+ * @param {string} record.symptoms - 증상
+ * @param {string} record.diagnosis - 진단
+ * @param {string} record.treatment - 치료 방법
+ * @param {string} record.prescription - 처방
+ * @param {string} record.notes - 기타 메모
+ * @param {string} doctorPublicKey - 의사의 RSA 공개키 (PEM 형식)
+ * @param {string} patientPublicKey - 환자의 RSA 공개키 (PEM 형식)
+ * @returns {Promise<{
+ *   encryptedRecord: string,
+ *   encryptedAESKeyForDoctor: string,
+ *   encryptedAESKeyForPatient: string,
+ *   iv: string
+ * }>}
+ *   - encryptedRecord: Base64 인코딩된 암호화 기록
+ *   - encryptedAESKeyForDoctor: 의사용 암호화된 AES 키 (Base64)
+ *   - encryptedAESKeyForPatient: 환자용 암호화된 AES 키 (Base64)
+ *   - iv: Base64 인코딩된 초기화 벡터
+ * @throws {Error} 공개키 없음, 암호화 실패
+ * 
+ * @example
+ * const record = {
+ *   symptoms: "두통, 발열",
+ *   diagnosis: "감기",
+ *   treatment: "충분한 휴식",
+ *   prescription: "해열제, 진통제",
+ *   notes: "3일 후 재방문"
+ * };
+ * 
+ * const doctorPublicKey = "-----BEGIN PUBLIC KEY-----...";
+ * const patientPublicKey = "-----BEGIN PUBLIC KEY-----...";
+ * 
+ * const encrypted = await encryptMedicalRecord(
+ *   record, 
+ *   doctorPublicKey, 
+ *   patientPublicKey
+ * );
+ * 
+ * // IPFS에 업로드
+ * const ipfsHash = await uploadToIPFS(encrypted.encryptedRecord);
+ * 
+ * // 블록체인에 저장
+ * await medicalRecordContract.createRecord(
+ *   patientAddress,
+ *   ipfsHash,
+ *   encrypted.encryptedAESKeyForDoctor,
+ *   encrypted.encryptedAESKeyForPatient,
+ *   encrypted.iv
+ * );
+ * 
+ * @security
+ * - 🔐 AES-256-GCM: 256-bit 키, 인증 암호화
+ * - 🔑 RSA-OAEP 2048-bit: OAEP padding으로 CPA 방어
+ * - 🎲 암호학적 안전 난수: Web Crypto API
+ * - ✅ 무결성 보장: GCM 인증 태그 포함
+ */
 export const encryptMedicalRecord = async (record, doctorPublicKey, patientPublicKey) => {
     try {
         console.log('🔐 [암호화] 시작 →', Object.keys(record));
@@ -239,7 +469,78 @@ export const encryptMedicalRecord = async (record, doctorPublicKey, patientPubli
     }
 };
 
-// 의료 기록 복호화
+/**
+ * 의료 기록 하이브리드 복호화
+ * 
+ * @description
+ * 하이브리드 방식으로 암호화된 의료 기록을 복호화.
+ * 의사와 환자가 각자의 개인키로 복호화 가능.
+ * 
+ * **복호화 과정:**
+ * 1. 역할에 따라 적절한 암호화된 AES 키 선택
+ *    - 의사: encryptedAESKeyForDoctor
+ *    - 환자: encryptedAESKeyForPatient
+ * 2. 개인키(RSA)로 AES 키 복호화
+ * 3. 복호화된 AES 키를 Web Crypto API로 import
+ * 4. AES-GCM으로 의료 기록 복호화
+ * 5. JSON 파싱하여 원래 객체 반환
+ * 
+ * **보안 검증:**
+ * - GCM 인증 태그 자동 검증
+ * - 데이터 변조 시 복호화 실패
+ * - 잘못된 개인키 사용 시 복호화 실패
+ * 
+ * @async
+ * @param {Object} encryptedData - 암호화된 의료 기록 데이터
+ * @param {string} encryptedData.encryptedRecord - Base64 암호화된 기록
+ * @param {string} encryptedData.encryptedAESKeyForDoctor - 의사용 암호화된 AES 키
+ * @param {string} encryptedData.encryptedAESKeyForPatient - 환자용 암호화된 AES 키
+ * @param {string} encryptedData.iv - Base64 인코딩된 IV
+ * @param {string} privateKey - RSA 개인키 (Base64 형식)
+ * @param {boolean} isDoctor - true면 의사, false면 환자
+ * @returns {Promise<Object>} 복호화된 의료 기록 객체
+ * @throws {Error} 잘못된 개인키, 데이터 변조, 복호화 실패
+ * 
+ * @example
+ * // 환자가 자신의 의료 기록 열람
+ * const encryptedData = {
+ *   encryptedRecord: "base64...",
+ *   encryptedAESKeyForDoctor: "base64...",
+ *   encryptedAESKeyForPatient: "base64...",
+ *   iv: "base64..."
+ * };
+ * 
+ * const patientPrivateKey = localStorage.getItem('privateKey');
+ * const record = await decryptMedicalRecord(
+ *   encryptedData, 
+ *   patientPrivateKey, 
+ *   false  // isDoctor = false
+ * );
+ * 
+ * console.log(record);
+ * // {
+ * //   symptoms: "두통, 발열",
+ * //   diagnosis: "감기",
+ * //   treatment: "충분한 휴식",
+ * //   prescription: "해열제, 진통제",
+ * //   notes: "3일 후 재방문"
+ * // }
+ * 
+ * @example
+ * // 의사가 환자의 의료 기록 열람
+ * const doctorPrivateKey = localStorage.getItem('doctorPrivateKey');
+ * const record = await decryptMedicalRecord(
+ *   encryptedData, 
+ *   doctorPrivateKey, 
+ *   true  // isDoctor = true
+ * );
+ * 
+ * @security
+ * - ✅ 인증 암호화: GCM 태그로 무결성 검증
+ * - ✅ 접근 제어: 의사/환자만 복호화 가능
+ * - ❌ 제3자 차단: 개인키 없으면 복호화 불가
+ * - ⚠️ 개인키 관리: 절대 유출되지 않도록 주의
+ */
 export const decryptMedicalRecord = async (encryptedData, privateKey, isDoctor) => {
     try {
         console.log('🔓 [복호화] 시작 →', isDoctor ? '의사' : '환자');
