@@ -5,7 +5,9 @@ import {
   getEncryptedMedicalRecordContract,
   getPatientInfoWithIPFS,
   getMedicalRecordWithIPFS,
+  verifyEncryptionStatus,
 } from "../utils/contracts";
+import { base64ToDataURL } from "../utils/imageUtils";
 
 const MedicalRecordViewer = ({
   keyRegistryContract,
@@ -21,6 +23,8 @@ const MedicalRecordViewer = ({
   const [decryptedRecords, setDecryptedRecords] = useState([]);
   const [hasPublicKey, setHasPublicKey] = useState(true);
   const [checkingKey, setCheckingKey] = useState(true);
+  const [encryptionStatus, setEncryptionStatus] = useState({});
+  const [checkingEncryption, setCheckingEncryption] = useState({});
 
   useEffect(() => {
     checkUserStatus();
@@ -417,7 +421,114 @@ const MedicalRecordViewer = ({
                     <span className="doctor-address">
                       의사: {record.doctor}
                     </span>
+                    <button
+                      onClick={async () => {
+                        const recordId = record.id;
+                        // selectedPatient가 없으면 currentAccount 사용
+                        const patientAddress =
+                          selectedPatient || currentAccount;
+
+                        if (!patientAddress) {
+                          alert("환자 주소를 선택하거나 입력해주세요.");
+                          return;
+                        }
+
+                        setCheckingEncryption((prev) => ({
+                          ...prev,
+                          [recordId]: true,
+                        }));
+                        try {
+                          const status = await verifyEncryptionStatus(
+                            patientAddress,
+                            recordId
+                          );
+                          setEncryptionStatus((prev) => ({
+                            ...prev,
+                            [recordId]: status,
+                          }));
+                        } catch (error) {
+                          console.error("암호화 확인 오류:", error);
+                          setEncryptionStatus((prev) => ({
+                            ...prev,
+                            [recordId]: {
+                              isEncrypted: false,
+                              reason: error.message,
+                            },
+                          }));
+                        } finally {
+                          setCheckingEncryption((prev) => ({
+                            ...prev,
+                            [recordId]: false,
+                          }));
+                        }
+                      }}
+                      disabled={checkingEncryption[record.id]}
+                      style={{
+                        marginLeft: "10px",
+                        padding: "5px 10px",
+                        fontSize: "12px",
+                        backgroundColor: "#4CAF50",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                      }}
+                      title="암호화 여부 확인"
+                    >
+                      {checkingEncryption[record.id]
+                        ? "확인 중..."
+                        : "🔒 암호화 확인"}
+                    </button>
                   </div>
+                  {encryptionStatus[record.id] && (
+                    <div
+                      style={{
+                        marginTop: "10px",
+                        padding: "10px",
+                        backgroundColor: encryptionStatus[record.id].isEncrypted
+                          ? "#e8f5e9"
+                          : "#ffebee",
+                        border: `1px solid ${
+                          encryptionStatus[record.id].isEncrypted
+                            ? "#4CAF50"
+                            : "#f44336"
+                        }`,
+                        borderRadius: "4px",
+                        fontSize: "13px",
+                      }}
+                    >
+                      <strong>
+                        {encryptionStatus[record.id].isEncrypted
+                          ? "✅ 암호화됨"
+                          : "❌ 암호화되지 않음"}
+                      </strong>
+                      {encryptionStatus[record.id].reason && (
+                        <p style={{ margin: "5px 0", color: "#666" }}>
+                          {encryptionStatus[record.id].reason}
+                        </p>
+                      )}
+                      {encryptionStatus[record.id].details && (
+                        <details style={{ marginTop: "5px" }}>
+                          <summary style={{ cursor: "pointer" }}>
+                            상세 정보
+                          </summary>
+                          <pre
+                            style={{
+                              marginTop: "5px",
+                              fontSize: "11px",
+                              overflow: "auto",
+                            }}
+                          >
+                            {JSON.stringify(
+                              encryptionStatus[record.id].details,
+                              null,
+                              2
+                            )}
+                          </pre>
+                        </details>
+                      )}
+                    </div>
+                  )}
 
                   {record.isDecrypted ? (
                     <div className="decrypted-content">
@@ -448,6 +559,122 @@ const MedicalRecordViewer = ({
                             "ko-KR"
                           )}
                         </p>
+
+                        {/* 이미지 표시 */}
+                        {record.decryptedData.images &&
+                          Array.isArray(record.decryptedData.images) &&
+                          record.decryptedData.images.length > 0 && (
+                            <div style={{ marginTop: "20px" }}>
+                              <strong
+                                style={{
+                                  display: "block",
+                                  marginBottom: "10px",
+                                }}
+                              >
+                                📷 첨부 이미지 (
+                                {record.decryptedData.images.length}개)
+                              </strong>
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns:
+                                    "repeat(auto-fill, minmax(200px, 1fr))",
+                                  gap: "15px",
+                                  marginTop: "10px",
+                                }}
+                              >
+                                {record.decryptedData.images.map(
+                                  (image, imgIndex) => (
+                                    <div
+                                      key={imgIndex}
+                                      style={{
+                                        border: "1px solid #ddd",
+                                        borderRadius: "8px",
+                                        overflow: "hidden",
+                                        background: "#f5f5f5",
+                                      }}
+                                    >
+                                      <img
+                                        src={base64ToDataURL(
+                                          image.data,
+                                          image.type
+                                        )}
+                                        alt={
+                                          image.name || `이미지 ${imgIndex + 1}`
+                                        }
+                                        style={{
+                                          width: "100%",
+                                          height: "200px",
+                                          objectFit: "cover",
+                                          display: "block",
+                                          cursor: "pointer",
+                                        }}
+                                        onClick={() => {
+                                          // 이미지 클릭 시 확대 보기
+                                          const newWindow = window.open();
+                                          if (newWindow) {
+                                            newWindow.document.write(`
+                                          <html>
+                                            <head>
+                                              <title>${
+                                                image.name || "이미지"
+                                              }</title>
+                                              <style>
+                                                body {
+                                                  margin: 0;
+                                                  padding: 20px;
+                                                  background: #000;
+                                                  display: flex;
+                                                  justify-content: center;
+                                                  align-items: center;
+                                                  min-height: 100vh;
+                                                }
+                                                img {
+                                                  max-width: 100%;
+                                                  max-height: 100vh;
+                                                  object-fit: contain;
+                                                }
+                                              </style>
+                                            </head>
+                                            <body>
+                                              <img src="${base64ToDataURL(
+                                                image.data,
+                                                image.type
+                                              )}" alt="${
+                                              image.name || "이미지"
+                                            }" />
+                                            </body>
+                                          </html>
+                                        `);
+                                          }
+                                        }}
+                                        onError={(e) => {
+                                          e.target.src =
+                                            "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect fill='%23ddd' width='200' height='200'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%23999'%3E이미지 로드 실패%3C/text%3E%3C/svg%3E";
+                                        }}
+                                      />
+                                      {image.name && (
+                                        <p
+                                          style={{
+                                            fontSize: "12px",
+                                            padding: "8px",
+                                            margin: 0,
+                                            textOverflow: "ellipsis",
+                                            overflow: "hidden",
+                                            whiteSpace: "nowrap",
+                                            background: "white",
+                                          }}
+                                          title={image.name}
+                                        >
+                                          {image.name}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          )}
                       </div>
                     </div>
                   ) : (

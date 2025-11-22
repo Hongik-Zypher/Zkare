@@ -4,7 +4,12 @@ import EncryptedMedicalRecordABI from "../abis/EncryptedMedicalRecord.json";
 import KeyRegistryABI from "../abis/KeyRegistry.json";
 import KeyRecoveryABI from "../abis/KeyRecovery.json";
 import { encryptMedicalRecord, decryptMedicalRecord } from "./encryption";
-import { uploadToIPFS, retrieveAndVerifyFromIPFS } from "./ipfs";
+import {
+  uploadToIPFS,
+  retrieveAndVerifyFromIPFS,
+  retrieveFromIPFS,
+  verifyDataIntegrity,
+} from "./ipfs";
 
 // 컨트랙트 주소 - 배포 후 업데이트 필요
 const MEDICAL_RECORD_ADDRESS =
@@ -1099,6 +1104,207 @@ export const getMedicalRecordWithIPFS = async (
   } catch (error) {
     console.error("❌ 의료 기록 조회 중 오류:", error);
     throw error;
+  }
+};
+
+/**
+ * 진료기록 암호화 여부 확인 (복호화 없이)
+ * @param {address} patientAddress - 환자 주소
+ * @param {number} recordId - 기록 ID (선택사항, 없으면 환자 기본정보 확인)
+ * @returns {Promise<Object>} 암호화 확인 결과
+ */
+export const verifyEncryptionStatus = async (
+  patientAddress,
+  recordId = null
+) => {
+  try {
+    console.log("🔍 [암호화 여부 확인] 시작", { patientAddress, recordId });
+
+    // 주소 유효성 검증
+    if (!patientAddress || patientAddress === "") {
+      return {
+        isEncrypted: false,
+        reason: "환자 주소가 제공되지 않았습니다.",
+        details: null,
+      };
+    }
+
+    const contract = await getEncryptedMedicalRecordContract();
+    if (!contract) {
+      throw new Error("Contract not initialized");
+    }
+
+    let ipfsCid, dataHash, encryptedDoctorKey, encryptedPatientKey;
+
+    try {
+      if (recordId !== null) {
+        // 진료기록 확인
+        console.log(`📋 진료기록 #${recordId} 확인 중...`);
+        const record = await contract.getMedicalRecord(
+          patientAddress,
+          recordId
+        );
+        // 튜플 반환값을 안전하게 처리
+        ipfsCid = record[0] || record.ipfsCid || "";
+        dataHash = record[1] || record.dataHash || "";
+        encryptedDoctorKey = record[2] || record.encryptedDoctorKey || "";
+        encryptedPatientKey = record[3] || record.encryptedPatientKey || "";
+      } else {
+        // 환자 기본정보 확인
+        console.log("👤 환자 기본정보 확인 중...");
+        const patientInfo = await contract.getPatientInfo(patientAddress);
+        // 튜플 반환값을 안전하게 처리 (name, ipfsCid, dataHash, encryptedDoctorKey, encryptedPatientKey, timestamp, isRegistered)
+        ipfsCid = patientInfo[1] || patientInfo.ipfsCid || "";
+        dataHash = patientInfo[2] || patientInfo.dataHash || "";
+        encryptedDoctorKey =
+          patientInfo[3] || patientInfo.encryptedDoctorKey || "";
+        encryptedPatientKey =
+          patientInfo[4] || patientInfo.encryptedPatientKey || "";
+      }
+    } catch (contractError) {
+      console.error("❌ 컨트랙트 호출 오류:", contractError);
+      // ENS 오류인 경우 더 명확한 메시지 제공
+      if (contractError.message && contractError.message.includes("ENS")) {
+        return {
+          isEncrypted: false,
+          reason:
+            "컨트랙트 호출 중 오류가 발생했습니다. 환자 주소를 확인해주세요.",
+          details: {
+            error: contractError.message,
+            patientAddress,
+            recordId,
+          },
+        };
+      }
+      throw contractError;
+    }
+
+    if (!ipfsCid || ipfsCid === "") {
+      return {
+        isEncrypted: false,
+        reason: "IPFS CID가 없습니다. 데이터가 저장되지 않았습니다.",
+        details: null,
+      };
+    }
+
+    // IPFS에서 데이터 조회
+    console.log("📥 IPFS에서 데이터 조회 중...");
+    const encryptedDataString = await retrieveFromIPFS(ipfsCid);
+
+    // JSON 파싱 시도
+    let encryptedDataObj;
+    try {
+      encryptedDataObj = JSON.parse(encryptedDataString);
+    } catch (e) {
+      return {
+        isEncrypted: false,
+        reason: "IPFS 데이터가 유효한 JSON 형식이 아닙니다.",
+        details: {
+          ipfsCid,
+          rawData: encryptedDataString.substring(0, 100) + "...",
+        },
+      };
+    }
+
+    // 암호화된 데이터 구조 확인
+    const hasEncryptedRecord = encryptedDataObj.encryptedRecord !== undefined;
+    const hasIV = encryptedDataObj.iv !== undefined;
+    const hasEncryptedKeys =
+      encryptedDoctorKey &&
+      encryptedDoctorKey.length > 0 &&
+      encryptedPatientKey &&
+      encryptedPatientKey.length > 0;
+
+    // Base64 형식 확인 (간단한 검증)
+    const isBase64Format = (str) => {
+      if (!str || typeof str !== "string") return false;
+      const base64Regex = /^[A-Za-z0-9+/=]+$/;
+      return base64Regex.test(str) && str.length > 0;
+    };
+
+    const encryptedRecordValid =
+      hasEncryptedRecord && isBase64Format(encryptedDataObj.encryptedRecord);
+    const ivValid = hasIV && isBase64Format(encryptedDataObj.iv);
+    const doctorKeyValid = isBase64Format(encryptedDoctorKey);
+    const patientKeyValid = isBase64Format(encryptedPatientKey);
+
+    // 해시 검증
+    const hashValid = verifyDataIntegrity(encryptedDataString, dataHash);
+
+    // 암호화 여부 종합 판단
+    const isEncrypted =
+      hasEncryptedRecord &&
+      hasIV &&
+      hasEncryptedKeys &&
+      encryptedRecordValid &&
+      ivValid &&
+      doctorKeyValid &&
+      patientKeyValid &&
+      hashValid;
+
+    const result = {
+      isEncrypted,
+      ipfsCid,
+      dataHash,
+      hashValid,
+      details: {
+        structure: {
+          hasEncryptedRecord,
+          hasIV,
+          hasEncryptedKeys,
+        },
+        format: {
+          encryptedRecordValid,
+          ivValid,
+          doctorKeyValid,
+          patientKeyValid,
+        },
+        dataSize: {
+          encryptedRecordLength: encryptedDataObj.encryptedRecord
+            ? encryptedDataObj.encryptedRecord.length
+            : 0,
+          ivLength: encryptedDataObj.iv ? encryptedDataObj.iv.length : 0,
+          doctorKeyLength: encryptedDoctorKey ? encryptedDoctorKey.length : 0,
+          patientKeyLength: encryptedPatientKey
+            ? encryptedPatientKey.length
+            : 0,
+        },
+        preview: {
+          encryptedRecordPreview: encryptedDataObj.encryptedRecord
+            ? encryptedDataObj.encryptedRecord.substring(0, 50) + "..."
+            : "없음",
+          ivPreview: encryptedDataObj.iv
+            ? encryptedDataObj.iv.substring(0, 20) + "..."
+            : "없음",
+        },
+      },
+    };
+
+    if (!isEncrypted) {
+      result.reason = [];
+      if (!hasEncryptedRecord) result.reason.push("encryptedRecord 필드 없음");
+      if (!hasIV) result.reason.push("iv 필드 없음");
+      if (!hasEncryptedKeys) result.reason.push("암호화된 키 없음");
+      if (!encryptedRecordValid)
+        result.reason.push("encryptedRecord가 유효한 Base64 형식이 아님");
+      if (!ivValid) result.reason.push("iv가 유효한 Base64 형식이 아님");
+      if (!doctorKeyValid)
+        result.reason.push("의사용 암호화 키가 유효한 Base64 형식이 아님");
+      if (!patientKeyValid)
+        result.reason.push("환자용 암호화 키가 유효한 Base64 형식이 아님");
+      if (!hashValid) result.reason.push("해시 무결성 검증 실패");
+      result.reason = result.reason.join(", ");
+    }
+
+    console.log("✅ 암호화 여부 확인 완료:", result);
+    return result;
+  } catch (error) {
+    console.error("❌ 암호화 여부 확인 중 오류:", error);
+    return {
+      isEncrypted: false,
+      reason: `오류 발생: ${error.message}`,
+      details: null,
+    };
   }
 };
 

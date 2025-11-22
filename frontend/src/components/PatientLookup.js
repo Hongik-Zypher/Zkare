@@ -7,6 +7,12 @@ import {
   registerPatientWithIPFS,
   addMedicalRecordWithIPFS,
 } from "../utils/contracts";
+import {
+  fileToBase64,
+  validateImageFile,
+  compressImage,
+  base64ToDataURL,
+} from "../utils/imageUtils";
 
 const PatientLookup = ({
   keyRegistryContract,
@@ -37,6 +43,11 @@ const PatientLookup = ({
     prescription: "",
     notes: "",
   });
+
+  // 이미지 관련 상태
+  const [selectedImages, setSelectedImages] = useState([]); // 선택된 이미지 파일들
+  const [imagePreviews, setImagePreviews] = useState([]); // 이미지 미리보기 (Data URL)
+  const [uploadingImages, setUploadingImages] = useState(false); // 이미지 업로드 중 상태
 
   // 의사 여부 및 공개키 등록 확인
   useEffect(() => {
@@ -134,9 +145,20 @@ const PatientLookup = ({
       const patientPublicKey = patientPublicKeyData[0]; // key
       const doctorPublicKey = doctorPublicKeyData[0]; // key
 
+      // 환자 등록 여부 확인 (실제 컨트랙트 상태 확인)
+      const contract = await getEncryptedMedicalRecordContract();
+      if (!contract) {
+        throw new Error("컨트랙트를 초기화할 수 없습니다.");
+      }
+
+      const isPatientAlreadyRegistered = await contract.isPatientRegistered(
+        patientAddress
+      );
+
       let result;
 
-      if (patientFound === "new") {
+      // 환자가 등록되어 있지 않은 경우에만 등록 시도
+      if (!isPatientAlreadyRegistered) {
         // 새 환자 등록 (IPFS 사용)
         console.log("👤 [신규 환자] 기본정보 등록 (IPFS)");
         const basicInfo = {
@@ -157,10 +179,65 @@ const PatientLookup = ({
 
         console.log("✅ 환자 등록 완료:", result.transactionHash);
         console.log("📦 IPFS CID:", result.ipfsCid);
+      } else {
+        console.log("ℹ️ 환자는 이미 등록되어 있습니다. 진료기록만 추가합니다.");
       }
 
       // 진료기록 추가 (IPFS 사용)
       console.log("📋 [진료기록] 추가 (IPFS)");
+
+      // 이미지를 Base64로 변환
+      let imageData = [];
+      if (selectedImages.length > 0) {
+        setUploadingImages(true);
+        try {
+          let totalSize = 0;
+          const maxTotalSize = 5 * 1024 * 1024; // 5MB 제한 (압축 후)
+
+          for (const file of selectedImages) {
+            const base64 = await fileToBase64(file);
+            const base64Size = (base64.length * 3) / 4; // Base64 크기 추정
+
+            if (totalSize + base64Size > maxTotalSize) {
+              alert(
+                `이미지 총 크기가 너무 큽니다. (최대 5MB)\n현재: ${(
+                  totalSize /
+                  1024 /
+                  1024
+                ).toFixed(2)}MB\n추가하려는 이미지: ${(
+                  base64Size /
+                  1024 /
+                  1024
+                ).toFixed(2)}MB`
+              );
+              break;
+            }
+
+            imageData.push({
+              data: base64,
+              type: file.type,
+              name: file.name,
+              size: file.size,
+            });
+            totalSize += base64Size;
+          }
+          console.log(
+            `✅ ${imageData.length}개 이미지 변환 완료 (총 크기: ${(
+              totalSize /
+              1024 /
+              1024
+            ).toFixed(2)}MB)`
+          );
+        } catch (error) {
+          console.error("❌ 이미지 변환 오류:", error);
+          alert("이미지 변환 중 오류가 발생했습니다.");
+          setUploadingImages(false);
+          return;
+        } finally {
+          setUploadingImages(false);
+        }
+      }
+
       const medicalData = {
         symptoms: medicalRecordForm.symptoms,
         diagnosis: medicalRecordForm.diagnosis,
@@ -168,6 +245,7 @@ const PatientLookup = ({
         prescription: medicalRecordForm.prescription,
         notes: medicalRecordForm.notes,
         date: new Date().toISOString(),
+        images: imageData, // 이미지 데이터 포함
       };
 
       // IPFS 함수 사용 (암호화 + IPFS 업로드 + 블록체인 저장 자동 처리)
@@ -200,6 +278,8 @@ const PatientLookup = ({
         prescription: "",
         notes: "",
       });
+      setSelectedImages([]);
+      setImagePreviews([]);
     } catch (error) {
       console.error("❌ 진료기록 저장 오류:", error);
       console.error("🔍 오류 상세:", {
@@ -552,6 +632,173 @@ const PatientLookup = ({
                 style={{ width: "100%", minHeight: "60px" }}
               />
             </div>
+
+            <div className="form-field">
+              <label
+                style={{
+                  fontWeight: "bold",
+                  marginBottom: "5px",
+                  display: "block",
+                }}
+              >
+                📷 이미지 첨부 (선택사항)
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={async (e) => {
+                  const files = Array.from(e.target.files);
+                  const MAX_IMAGES = 10; // 최대 이미지 개수
+                  const MAX_TOTAL_SIZE = 5 * 1024 * 1024; // 최대 총 크기 5MB
+
+                  if (selectedImages.length + files.length > MAX_IMAGES) {
+                    alert(
+                      `최대 ${MAX_IMAGES}개의 이미지만 첨부할 수 있습니다.\n현재: ${selectedImages.length}개, 추가 시도: ${files.length}개`
+                    );
+                    e.target.value = "";
+                    return;
+                  }
+
+                  const validFiles = [];
+                  const previews = [];
+                  let totalSize = 0;
+
+                  for (const file of files) {
+                    if (!validateImageFile(file)) {
+                      alert(
+                        `${file.name}: 지원하지 않는 형식이거나 파일 크기가 너무 큽니다. (최대 10MB)`
+                      );
+                      continue;
+                    }
+
+                    try {
+                      // 이미지 압축 (더 강력한 압축)
+                      const compressedFile = await compressImage(
+                        file,
+                        1280,
+                        1280,
+                        0.7
+                      );
+
+                      if (totalSize + compressedFile.size > MAX_TOTAL_SIZE) {
+                        alert(
+                          `이미지 총 크기가 너무 큽니다. (최대 5MB)\n현재: ${(
+                            totalSize /
+                            1024 /
+                            1024
+                          ).toFixed(2)}MB`
+                        );
+                        break;
+                      }
+
+                      validFiles.push(compressedFile);
+                      totalSize += compressedFile.size;
+
+                      // 미리보기 생성
+                      const base64 = await fileToBase64(compressedFile);
+                      previews.push({
+                        data: base64ToDataURL(base64, file.type),
+                        name: file.name,
+                      });
+                    } catch (error) {
+                      console.error("이미지 처리 오류:", error);
+                      alert(`${file.name} 처리 중 오류가 발생했습니다.`);
+                    }
+                  }
+
+                  setSelectedImages((prev) => [...prev, ...validFiles]);
+                  setImagePreviews((prev) => [...prev, ...previews]);
+
+                  // input 초기화 (같은 파일 다시 선택 가능하도록)
+                  e.target.value = "";
+                }}
+                style={{ width: "100%", padding: "8px", marginBottom: "10px" }}
+              />
+              <p style={{ fontSize: "12px", color: "#666", marginTop: "5px" }}>
+                이미지는 암호화되어 IPFS에 저장됩니다. (최대 10개, 총 5MB 이하,
+                JPG/PNG/GIF/WebP)
+              </p>
+
+              {/* 이미지 미리보기 */}
+              {imagePreviews.length > 0 && (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fill, minmax(150px, 1fr))",
+                    gap: "10px",
+                    marginTop: "15px",
+                  }}
+                >
+                  {imagePreviews.map((preview, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        position: "relative",
+                        border: "1px solid #ddd",
+                        borderRadius: "8px",
+                        overflow: "hidden",
+                        background: "#f5f5f5",
+                      }}
+                    >
+                      <img
+                        src={preview.data}
+                        alt={preview.name}
+                        style={{
+                          width: "100%",
+                          height: "150px",
+                          objectFit: "cover",
+                          display: "block",
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedImages((prev) =>
+                            prev.filter((_, i) => i !== index)
+                          );
+                          setImagePreviews((prev) =>
+                            prev.filter((_, i) => i !== index)
+                          );
+                        }}
+                        style={{
+                          position: "absolute",
+                          top: "5px",
+                          right: "5px",
+                          background: "rgba(244, 67, 54, 0.9)",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "50%",
+                          width: "24px",
+                          height: "24px",
+                          cursor: "pointer",
+                          fontSize: "14px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        ×
+                      </button>
+                      <p
+                        style={{
+                          fontSize: "10px",
+                          padding: "5px",
+                          margin: 0,
+                          textOverflow: "ellipsis",
+                          overflow: "hidden",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={preview.name}
+                      >
+                        {preview.name}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <div
@@ -565,6 +812,7 @@ const PatientLookup = ({
               onClick={handleSubmitMedicalRecord}
               disabled={
                 loading ||
+                uploadingImages ||
                 !medicalRecordForm.symptoms ||
                 !medicalRecordForm.diagnosis
               }
@@ -575,19 +823,25 @@ const PatientLookup = ({
                 fontSize: "16px",
                 fontWeight: "bold",
                 background:
-                  !medicalRecordForm.symptoms || !medicalRecordForm.diagnosis
+                  !medicalRecordForm.symptoms ||
+                  !medicalRecordForm.diagnosis ||
+                  uploadingImages
                     ? "#ccc"
                     : "linear-gradient(45deg, #2196f3 30%, #21cbf3 90%)",
                 border: "none",
                 borderRadius: "8px",
                 color: "white",
                 cursor:
-                  !medicalRecordForm.symptoms || !medicalRecordForm.diagnosis
+                  !medicalRecordForm.symptoms ||
+                  !medicalRecordForm.diagnosis ||
+                  uploadingImages
                     ? "not-allowed"
                     : "pointer",
               }}
             >
-              {loading
+              {uploadingImages
+                ? "📷 이미지 처리 중..."
+                : loading
                 ? "🔐 암호화 및 저장 중..."
                 : "🔒 암호화하여 진료기록 저장"}
             </button>
