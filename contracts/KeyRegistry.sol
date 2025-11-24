@@ -23,9 +23,9 @@ contract KeyRegistry is Ownable {
     // 신뢰할 수 있는 컨트랙트 (KeyRecovery 등)
     mapping(address => bool) private trustedContracts;
     
-    // 행안부 장관 주소 (하드코딩, 변경 불가)
+    // 행안부 장관 주소 (constructor에서 설정)
     // 이 주소로 키를 등록하면 자동으로 마스터키로도 설정됨
-    address public constant MASTER_AUTHORITY_ADDRESS = 0xBcd4042DE499D14e55001CcbB24a551F3b954096;
+    address public immutable MASTER_AUTHORITY_ADDRESS;
     
     // 행안부 장관 마스터키 관리
     struct MasterKey {
@@ -47,12 +47,14 @@ contract KeyRegistry is Ownable {
     event MasterKeyUpdated(address indexed updatedBy, uint256 timestamp);
     
     /**
-     * @notice constructor에서 마스터키 설정 (선택사항)
+     * @notice constructor에서 마스터 계정 주소 및 마스터키 설정
+     * @param _masterAuthorityAddress 행안부 장관 주소 (환경 변수에서 읽어옴)
      * @param _masterPublicKey 행안부 장관의 RSA 공개키 (PEM 형식, 선택사항)
      *                         빈 문자열이면 행안부 장관이 나중에 registerPublicKey로 등록 가능
-     *                         frontend/.env의 REACT_APP_MASTER_PUBLIC_KEY에서 읽어옴
      */
-    constructor(string memory _masterPublicKey) Ownable(msg.sender) {
+    constructor(address _masterAuthorityAddress, string memory _masterPublicKey) Ownable(msg.sender) {
+        require(_masterAuthorityAddress != address(0), "Master authority address cannot be zero");
+        MASTER_AUTHORITY_ADDRESS = _masterAuthorityAddress;
         // 마스터키가 제공되면 설정, 없으면 나중에 행안부 장관이 등록할 수 있음
         if (bytes(_masterPublicKey).length > 0) {
             masterKey = MasterKey({

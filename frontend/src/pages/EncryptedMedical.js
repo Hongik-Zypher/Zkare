@@ -65,8 +65,8 @@ function TabPanel({ children, value, index, ...other }) {
     );
 }
 
-// 마스터 계정 주소
-const MASTER_AUTHORITY_ADDRESS = "0xBcd4042DE499D14e55001CcbB24a551F3b954096";
+// 마스터 계정 주소 (환경 변수에서 읽기)
+const MASTER_AUTHORITY_ADDRESS = process.env.REACT_APP_MASTER_AUTHORITY_ADDRESS || "0xBcd4042DE499D14e55001CcbB24a551F3b954096";
 
 const EncryptedMedical = ({ currentAccount: propCurrentAccount }) => {
     const [currentAccount, setCurrentAccount] = useState(propCurrentAccount || '');

@@ -17,14 +17,23 @@ async function main() {
   };
 
   try {
-    // 0. 행안부 장관 마스터키 읽기 (frontend/.env에서)
+    // 0. 행안부 장관 주소 및 마스터키 읽기 (frontend/.env에서)
     // 우선순위: frontend/.env > 환경 변수
+    let MASTER_AUTHORITY_ADDRESS = null;
     let MASTER_PUBLIC_KEY = null;
     
     // 1순위: frontend/.env에서 읽기
     const frontendEnvPath = path.join(__dirname, "../frontend/.env");
     if (fs.existsSync(frontendEnvPath)) {
       const frontendEnvContent = fs.readFileSync(frontendEnvPath, "utf8");
+      
+      // REACT_APP_MASTER_AUTHORITY_ADDRESS 찾기
+      const masterAddressMatch = frontendEnvContent.match(/REACT_APP_MASTER_AUTHORITY_ADDRESS\s*=\s*([^\s\n]+)/);
+      if (masterAddressMatch && masterAddressMatch[1]) {
+        MASTER_AUTHORITY_ADDRESS = masterAddressMatch[1].trim();
+        console.log("✅ frontend/.env에서 마스터 계정 주소를 읽어왔습니다.");
+      }
+      
       // REACT_APP_MASTER_PUBLIC_KEY 찾기 (여러 줄 지원)
       const masterKeyMatch = frontendEnvContent.match(/REACT_APP_MASTER_PUBLIC_KEY\s*=\s*["']?([^"'\n]+(?:\n[^"'\n]+)*)["']?/s);
       if (masterKeyMatch && masterKeyMatch[1]) {
@@ -36,24 +45,38 @@ async function main() {
     }
     
     // 2순위: 환경 변수에서 읽기
+    if (!MASTER_AUTHORITY_ADDRESS && process.env.MASTER_AUTHORITY_ADDRESS) {
+      MASTER_AUTHORITY_ADDRESS = process.env.MASTER_AUTHORITY_ADDRESS;
+      console.log("✅ 환경 변수에서 마스터 계정 주소를 읽어왔습니다.");
+    }
     if (!MASTER_PUBLIC_KEY && process.env.MASTER_PUBLIC_KEY) {
       MASTER_PUBLIC_KEY = process.env.MASTER_PUBLIC_KEY;
       console.log("✅ 환경 변수에서 마스터키를 읽어왔습니다.");
     }
     
+    // 기본값 설정 (없으면 에러)
+    if (!MASTER_AUTHORITY_ADDRESS) {
+      throw new Error("❌ 마스터 계정 주소가 설정되지 않았습니다. frontend/.env에 REACT_APP_MASTER_AUTHORITY_ADDRESS를 설정해주세요.");
+    }
+    
+    // 주소 유효성 검증
+    try {
+      hre.ethers.getAddress(MASTER_AUTHORITY_ADDRESS); // 주소 형식 검증
+    } catch (error) {
+      throw new Error(`❌ 잘못된 마스터 계정 주소입니다: ${MASTER_AUTHORITY_ADDRESS}`);
+    }
+    
+    console.log("📋 마스터 계정 주소:", MASTER_AUTHORITY_ADDRESS);
+    
     // 마스터키가 없어도 괜찮음 (행안부 장관이 나중에 등록 가능)
     if (!MASTER_PUBLIC_KEY) {
       console.warn("⚠️  frontend/.env에 REACT_APP_MASTER_PUBLIC_KEY가 없습니다.");
       console.warn("⚠️  행안부 장관이 나중에 키를 등록하면 자동으로 마스터키로 설정됩니다.");
-      console.warn("   행안부 장관 주소:", "0xbcd4042de499d14e55001ccbb24a551f3b954096");
-    } else {
-      console.log("✅ frontend/.env에서 마스터키를 읽어왔습니다.");
-      console.log("   행안부 장관 주소:", "0xbcd4042de499d14e55001ccbb24a551f3b954096");
     }
 
     // 1. KeyRegistry 컨트랙트 배포
     console.log("\n🔑 KeyRegistry 컨트랙트 배포 중...");
-    console.log("   행안부 장관 주소:", "0xBcd4042DE499D14e55001CcbB24a551F3b954096");
+    console.log("   마스터 계정 주소:", MASTER_AUTHORITY_ADDRESS);
     if (MASTER_PUBLIC_KEY) {
       console.log("   ✅ frontend/.env에서 읽은 마스터키를 사용합니다.");
       console.log("   💡 또는 행안부 장관이 키를 등록하면 자동으로 마스터키로 설정됩니다.");
@@ -62,7 +85,7 @@ async function main() {
       console.log("   💡 행안부 장관이 키를 등록하면 자동으로 마스터키로 설정됩니다.");
     }
     const KeyRegistry = await hre.ethers.getContractFactory("KeyRegistry");
-    const keyRegistry = await KeyRegistry.deploy(MASTER_PUBLIC_KEY || "");
+    const keyRegistry = await KeyRegistry.deploy(MASTER_AUTHORITY_ADDRESS, MASTER_PUBLIC_KEY || "");
     await keyRegistry.waitForDeployment();
     const keyRegistryAddress = await keyRegistry.getAddress();
     console.log("✅ KeyRegistry 컨트랙트 배포됨:", keyRegistryAddress);
