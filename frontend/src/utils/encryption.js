@@ -368,7 +368,7 @@ const decryptWithPrivateKey = async (encryptedData, privateKeyBase64) => {
  * 의료 기록 하이브리드 암호화
  *
  * @description
- * 의료 기록을 의사와 환자 모두가 볼 수 있도록 하이브리드 방식으로 암호화.
+ * 의료 기록을 의사, 환자, 행안부 장관 모두가 볼 수 있도록 하이브리드 방식으로 암호화.
  *
  * **암호화 과정:**
  * 1. AES-256 대칭키 생성 (랜덤)
@@ -377,18 +377,20 @@ const decryptWithPrivateKey = async (encryptedData, privateKeyBase64) => {
  * 4. AES-GCM으로 의료 기록 암호화
  * 5. AES 키를 의사의 RSA 공개키로 암호화
  * 6. 동일한 AES 키를 환자의 RSA 공개키로 암호화
- * 7. 암호화된 기록 + 2개의 암호화된 AES 키 + IV 반환
+ * 7. 동일한 AES 키를 행안부 장관 마스터키로 암호화
+ * 8. 암호화된 기록 + 3개의 암호화된 AES 키 + IV 반환
  *
  * **다중 수신자 암호화:**
  * - 동일한 AES 키를 여러 RSA 공개키로 암호화
- * - 의사와 환자 각자의 개인키로 AES 키 복호화 가능
+ * - 의사, 환자, 행안부 장관 각자의 개인키로 AES 키 복호화 가능
  * - 복호화된 AES 키로 의료 기록 접근
  *
  * **보안 특성:**
- * - 기밀성: 의사와 환자만 열람 가능
+ * - 기밀성: 의사, 환자, 행안부 장관만 열람 가능
  * - 무결성: GCM의 인증 태그로 변조 검증
  * - 효율성: AES로 대용량 데이터 빠르게 암호화
  * - 안전성: RSA-OAEP로 키 안전하게 전달
+ * - 강제 복구: 행안부 장관 마스터키로 긴급 상황 대응
  *
  * @async
  * @param {Object} record - 암호화할 의료 기록 객체
@@ -399,15 +401,18 @@ const decryptWithPrivateKey = async (encryptedData, privateKeyBase64) => {
  * @param {string} record.notes - 기타 메모
  * @param {string} doctorPublicKey - 의사의 RSA 공개키 (PEM 형식)
  * @param {string} patientPublicKey - 환자의 RSA 공개키 (PEM 형식)
+ * @param {string} masterPublicKey - 행안부 장관 마스터키 (PEM 형식, 선택사항)
  * @returns {Promise<{
  *   encryptedRecord: string,
  *   encryptedAESKeyForDoctor: string,
  *   encryptedAESKeyForPatient: string,
+ *   encryptedAESKeyForMaster: string,
  *   iv: string
  * }>}
  *   - encryptedRecord: Base64 인코딩된 암호화 기록
  *   - encryptedAESKeyForDoctor: 의사용 암호화된 AES 키 (Base64)
  *   - encryptedAESKeyForPatient: 환자용 암호화된 AES 키 (Base64)
+ *   - encryptedAESKeyForMaster: 행안부 장관용 암호화된 AES 키 (Base64)
  *   - iv: Base64 인코딩된 초기화 벡터
  * @throws {Error} 공개키 없음, 암호화 실패
  *
@@ -422,23 +427,13 @@ const decryptWithPrivateKey = async (encryptedData, privateKeyBase64) => {
  *
  * const doctorPublicKey = "-----BEGIN PUBLIC KEY-----...";
  * const patientPublicKey = "-----BEGIN PUBLIC KEY-----...";
+ * const masterPublicKey = "-----BEGIN PUBLIC KEY-----...";
  *
  * const encrypted = await encryptMedicalRecord(
  *   record,
  *   doctorPublicKey,
- *   patientPublicKey
- * );
- *
- * // IPFS에 업로드
- * const ipfsHash = await uploadToIPFS(encrypted.encryptedRecord);
- *
- * // 블록체인에 저장
- * await medicalRecordContract.createRecord(
- *   patientAddress,
- *   ipfsHash,
- *   encrypted.encryptedAESKeyForDoctor,
- *   encrypted.encryptedAESKeyForPatient,
- *   encrypted.iv
+ *   patientPublicKey,
+ *   masterPublicKey
  * );
  *
  * @security
@@ -446,11 +441,13 @@ const decryptWithPrivateKey = async (encryptedData, privateKeyBase64) => {
  * - 🔑 RSA-OAEP 2048-bit: OAEP padding으로 CPA 방어
  * - 🎲 암호학적 안전 난수: Web Crypto API
  * - ✅ 무결성 보장: GCM 인증 태그 포함
+ * - 🛡️ 강제 복구: 행안부 장관 마스터키로 긴급 접근
  */
 export const encryptMedicalRecord = async (
   record,
   doctorPublicKey,
-  patientPublicKey
+  patientPublicKey,
+  masterPublicKey = null
 ) => {
   try {
     console.log("🔐 [암호화] 시작 →", Object.keys(record));
@@ -479,7 +476,7 @@ export const encryptMedicalRecord = async (
     // AES 키를 내보내기
     const rawKey = await window.crypto.subtle.exportKey("raw", aesKey);
 
-    // AES 키를 의사와 환자의 공개키로 암호화
+    // AES 키를 의사, 환자, 행안부 장관의 공개키로 암호화
     const encryptedKeyForDoctor = await encryptWithPublicKey(
       rawKey,
       doctorPublicKey
@@ -488,11 +485,20 @@ export const encryptMedicalRecord = async (
       rawKey,
       patientPublicKey
     );
+    
+    let encryptedKeyForMaster = "";
+    if (masterPublicKey) {
+      encryptedKeyForMaster = await encryptWithPublicKey(
+        rawKey,
+        masterPublicKey
+      );
+    }
 
     const result = {
       encryptedRecord: bufferToBase64(encryptedRecord),
       encryptedAESKeyForDoctor: encryptedKeyForDoctor,
       encryptedAESKeyForPatient: encryptedKeyForPatient,
+      encryptedAESKeyForMaster: encryptedKeyForMaster,
       iv: bufferToBase64(iv),
     };
 
@@ -513,12 +519,13 @@ export const encryptMedicalRecord = async (
  *
  * @description
  * 하이브리드 방식으로 암호화된 의료 기록을 복호화.
- * 의사와 환자가 각자의 개인키로 복호화 가능.
+ * 의사, 환자, 행안부 장관이 각자의 개인키로 복호화 가능.
  *
  * **복호화 과정:**
  * 1. 역할에 따라 적절한 암호화된 AES 키 선택
  *    - 의사: encryptedAESKeyForDoctor
  *    - 환자: encryptedAESKeyForPatient
+ *    - 행안부 장관: encryptedAESKeyForMaster
  * 2. 개인키(RSA)로 AES 키 복호화
  * 3. 복호화된 AES 키를 Web Crypto API로 import
  * 4. AES-GCM으로 의료 기록 복호화
@@ -534,9 +541,10 @@ export const encryptMedicalRecord = async (
  * @param {string} encryptedData.encryptedRecord - Base64 암호화된 기록
  * @param {string} encryptedData.encryptedAESKeyForDoctor - 의사용 암호화된 AES 키
  * @param {string} encryptedData.encryptedAESKeyForPatient - 환자용 암호화된 AES 키
+ * @param {string} encryptedData.encryptedAESKeyForMaster - 행안부 장관용 암호화된 AES 키
  * @param {string} encryptedData.iv - Base64 인코딩된 IV
- * @param {string} privateKey - RSA 개인키 (Base64 형식)
- * @param {boolean} isDoctor - true면 의사, false면 환자
+ * @param {string} privateKey - RSA 개인키 (PEM 형식)
+ * @param {string} role - "doctor", "patient", 또는 "master"
  * @returns {Promise<Object>} 복호화된 의료 기록 객체
  * @throws {Error} 잘못된 개인키, 데이터 변조, 복호화 실패
  *
@@ -546,59 +554,66 @@ export const encryptMedicalRecord = async (
  *   encryptedRecord: "base64...",
  *   encryptedAESKeyForDoctor: "base64...",
  *   encryptedAESKeyForPatient: "base64...",
+ *   encryptedAESKeyForMaster: "base64...",
  *   iv: "base64..."
  * };
  *
- * const patientPrivateKey = localStorage.getItem('privateKey');
+ * const patientPrivateKey = "...";
  * const record = await decryptMedicalRecord(
  *   encryptedData,
  *   patientPrivateKey,
- *   false  // isDoctor = false
+ *   "patient"
  * );
  *
- * console.log(record);
- * // {
- * //   symptoms: "두통, 발열",
- * //   diagnosis: "감기",
- * //   treatment: "충분한 휴식",
- * //   prescription: "해열제, 진통제",
- * //   notes: "3일 후 재방문"
- * // }
- *
  * @example
- * // 의사가 환자의 의료 기록 열람
- * const doctorPrivateKey = localStorage.getItem('doctorPrivateKey');
+ * // 행안부 장관이 긴급 상황에서 의료 기록 열람
+ * const masterPrivateKey = "...";
  * const record = await decryptMedicalRecord(
  *   encryptedData,
- *   doctorPrivateKey,
- *   true  // isDoctor = true
+ *   masterPrivateKey,
+ *   "master"
  * );
  *
  * @security
  * - ✅ 인증 암호화: GCM 태그로 무결성 검증
- * - ✅ 접근 제어: 의사/환자만 복호화 가능
+ * - ✅ 접근 제어: 의사/환자/행안부 장관만 복호화 가능
  * - ❌ 제3자 차단: 개인키 없으면 복호화 불가
  * - ⚠️ 개인키 관리: 절대 유출되지 않도록 주의
+ * - 🛡️ 강제 복구: 행안부 장관 마스터키로 긴급 접근
  */
 export const decryptMedicalRecord = async (
   encryptedData,
   privateKey,
-  isDoctor
+  role = "patient"
 ) => {
   try {
-    console.log("🔓 [복호화] 시작 →", isDoctor ? "의사" : "환자");
+    console.log("🔓 [복호화] 시작 →", role);
 
     const {
       encryptedRecord,
       encryptedAESKeyForDoctor,
       encryptedAESKeyForPatient,
+      encryptedAESKeyForMaster,
       iv,
     } = encryptedData;
 
-    // 적절한 암호화된 AES 키 선택
-    const encryptedAESKey = isDoctor
-      ? encryptedAESKeyForDoctor
-      : encryptedAESKeyForPatient;
+    // 역할에 따라 적절한 암호화된 AES 키 선택
+    let encryptedAESKey;
+    if (role === "doctor") {
+      encryptedAESKey = encryptedAESKeyForDoctor;
+    } else if (role === "master") {
+      encryptedAESKey = encryptedAESKeyForMaster;
+      if (!encryptedAESKey || encryptedAESKey === "") {
+        throw new Error("마스터키로 암호화된 AES 키가 없습니다.");
+      }
+    } else {
+      // 기본값: patient
+      encryptedAESKey = encryptedAESKeyForPatient;
+    }
+
+    if (!encryptedAESKey || encryptedAESKey === "") {
+      throw new Error(`암호화된 AES 키를 찾을 수 없습니다. (role: ${role})`);
+    }
 
     // AES 키 복호화
     const aesKeyBuffer = await decryptWithPrivateKey(

@@ -11,7 +11,7 @@ yarn.lock
 # 하드햇 관련 파일
 cache
 artifacts
-deployments/localhost
+deployments/
 typechain
 typechain-types
 

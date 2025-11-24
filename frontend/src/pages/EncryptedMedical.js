@@ -65,6 +65,9 @@ function TabPanel({ children, value, index, ...other }) {
     );
 }
 
+// 마스터 계정 주소
+const MASTER_AUTHORITY_ADDRESS = "0xBcd4042DE499D14e55001CcbB24a551F3b954096";
+
 const EncryptedMedical = ({ currentAccount: propCurrentAccount }) => {
     const [currentAccount, setCurrentAccount] = useState(propCurrentAccount || '');
     const [provider, setProvider] = useState(null);
@@ -183,7 +186,19 @@ const EncryptedMedical = ({ currentAccount: propCurrentAccount }) => {
                 setIsPublicKeyRegistered(isRegistered);
                 console.log('🔑 공개키 등록 여부:', isRegistered);
 
-                if (isRegistered) {
+                // 먼저 마스터 계정인지 확인
+                const isMaster = account && 
+                    account.toLowerCase() === MASTER_AUTHORITY_ADDRESS.toLowerCase();
+                
+                if (isMaster) {
+                    console.log('✅ 마스터 계정 감지됨!');
+                    setUserRole('doctor'); // 마스터 계정은 의사 권한으로 취급
+                    // 마스터 계정도 실제 공개키 등록 여부 확인
+                    const masterKeyRegistered = await checkIsPublicKeyRegistered(account);
+                    setIsPublicKeyRegistered(masterKeyRegistered);
+                    console.log('👤 사용자 역할: 마스터 계정 (의사 권한)');
+                    console.log('📋 마스터 계정 공개키 등록 여부:', masterKeyRegistered);
+                } else if (isRegistered) {
                     const isDoctorAccount = await checkIsDoctor(account);
                     setUserRole(isDoctorAccount ? 'doctor' : 'patient');
                     console.log('👤 사용자 역할:', isDoctorAccount ? 'doctor' : 'patient');
@@ -209,7 +224,22 @@ const EncryptedMedical = ({ currentAccount: propCurrentAccount }) => {
 
             console.log('🔍 역할 확인 중:', currentAccount);
             
-            // contracts.js의 함수 사용 (ENS 없음)
+            // 먼저 마스터 계정인지 확인
+            const isMaster = currentAccount && 
+                currentAccount.toLowerCase() === MASTER_AUTHORITY_ADDRESS.toLowerCase();
+            
+            if (isMaster) {
+                console.log('✅ 마스터 계정 감지됨!');
+                setUserRole('doctor'); // 마스터 계정은 의사 권한으로 취급
+                // 마스터 계정도 실제 공개키 등록 여부 확인
+                const isRegistered = await checkIsPublicKeyRegistered(currentAccount);
+                setIsPublicKeyRegistered(isRegistered);
+                console.log('👤 역할: 마스터 계정 (의사 권한)');
+                console.log('📋 마스터 계정 공개키 등록 여부:', isRegistered);
+                return;
+            }
+            
+            // 일반 사용자의 경우 공개키 등록 여부 확인
             const isRegistered = await checkIsPublicKeyRegistered(currentAccount);
             setIsPublicKeyRegistered(isRegistered);
             console.log('📋 등록 여부:', isRegistered);
@@ -346,7 +376,7 @@ const EncryptedMedical = ({ currentAccount: propCurrentAccount }) => {
 
             {/* 키 등록 필요 */}
             {!isPublicKeyRegistered && (
-                <Card sx={{ mb: 3, border: '2px solid #ff9800' }}>
+                <Card id="key-generation-section" sx={{ mb: 3, border: '2px solid #ff9800' }}>
                     <CardContent>
                         <Typography variant="h5" gutterBottom color="warning">
                             🔑 암호화 키 등록이 필요합니다

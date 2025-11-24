@@ -9,6 +9,9 @@ import {
 } from "../utils/contracts";
 import { base64ToDataURL } from "../utils/imageUtils";
 
+// 마스터 계정 주소
+const MASTER_AUTHORITY_ADDRESS = "0xBcd4042DE499D14e55001CcbB24a551F3b954096";
+
 const MedicalRecordViewer = ({
   keyRegistryContract,
   medicalRecordContract,
@@ -19,6 +22,7 @@ const MedicalRecordViewer = ({
   const [loading, setLoading] = useState(false);
   const [privateKey, setPrivateKey] = useState("");
   const [isDoctor, setIsDoctor] = useState(false);
+  const [isMasterAuthority, setIsMasterAuthority] = useState(false); // 마스터 계정 여부
   const [selectedPatient, setSelectedPatient] = useState("");
   const [decryptedRecords, setDecryptedRecords] = useState([]);
   const [hasPublicKey, setHasPublicKey] = useState(true);
@@ -40,8 +44,35 @@ const MedicalRecordViewer = ({
     setCheckingKey(true);
     try {
       console.log("🔍 사용자 상태 확인 중...", currentAccount);
+      console.log("🔍 마스터 계정 주소:", MASTER_AUTHORITY_ADDRESS);
 
-      // contracts.js의 함수 사용 (ENS 에러 없음)
+      // 먼저 마스터 계정인지 확인 (공개키 등록 여부와 무관하게)
+      const currentAccountLower = currentAccount ? currentAccount.toLowerCase() : "";
+      const masterAddressLower = MASTER_AUTHORITY_ADDRESS.toLowerCase();
+      const isMaster = currentAccountLower === masterAddressLower;
+      
+      console.log("🔍 주소 비교:", {
+        currentAccount: currentAccountLower,
+        masterAddress: masterAddressLower,
+        isMatch: isMaster
+      });
+      
+      setIsMasterAuthority(isMaster);
+      
+      if (isMaster) {
+        console.log("✅ 마스터 계정 감지됨!");
+        // 마스터 계정이면 바로 의사 권한으로 설정
+        setIsDoctor(true);
+        setHasPublicKey(true); // 마스터 계정은 공개키 등록 여부와 무관하게 접근 가능
+        console.log("👤 사용자 역할: 마스터 계정 (의사 권한으로 취급)");
+        console.log("✅ isDoctor = true로 설정됨");
+        setCheckingKey(false);
+        return;
+      } else {
+        console.log("ℹ️ 일반 사용자 계정");
+      }
+
+      // 일반 사용자의 경우 공개키 등록 여부 확인
       const keyRegistered = await checkIsPublicKeyRegistered(currentAccount);
       setHasPublicKey(keyRegistered);
       console.log("🔑 공개키 등록 여부:", keyRegistered);
@@ -52,6 +83,7 @@ const MedicalRecordViewer = ({
         return;
       }
 
+      // 의사 여부 확인
       const doctorStatus = await checkIsDoctor(currentAccount);
       setIsDoctor(doctorStatus);
       console.log("👤 사용자 역할:", doctorStatus ? "의사" : "환자");
@@ -141,11 +173,20 @@ const MedicalRecordViewer = ({
     try {
       // IPFS에서 데이터를 가져와서 복호화
       const targetAddress = selectedPatient || currentAccount;
+      
+      // 마스터키인지 확인 (행안부 장관 주소)
+      const isMasterKey = currentAccount && 
+        currentAccount.toLowerCase() === MASTER_AUTHORITY_ADDRESS.toLowerCase();
+      
+      const decryptionRole = isMasterKey ? "master" : (isDoctor ? "doctor" : "patient");
+      console.log("🔓 복호화 역할:", decryptionRole, isMasterKey ? "(마스터 계정)" : "");
+      
       const decryptedData = await getMedicalRecordWithIPFS(
         targetAddress,
         record.id,
         privateKey,
-        isDoctor
+        isDoctor,
+        decryptionRole
       );
 
       return {
@@ -168,10 +209,19 @@ const MedicalRecordViewer = ({
 
     try {
       const targetAddress = selectedPatient || currentAccount;
+      
+      // 마스터키인지 확인 (행안부 장관 주소)
+      const isMasterKey = currentAccount && 
+        currentAccount.toLowerCase() === MASTER_AUTHORITY_ADDRESS.toLowerCase();
+      
+      const decryptionRole = isMasterKey ? "master" : (isDoctor ? "doctor" : "patient");
+      console.log("🔓 복호화 역할:", decryptionRole, isMasterKey ? "(마스터 계정)" : "");
+      
       const decryptedInfo = await getPatientInfoWithIPFS(
         targetAddress,
         privateKey,
-        isDoctor
+        isDoctor,
+        decryptionRole
       );
 
       setPatientInfo({
@@ -270,12 +320,26 @@ const MedicalRecordViewer = ({
     );
   }
 
+  // 디버깅: 렌더링 시점의 상태 확인
+  console.log("🔍 [렌더링] 현재 상태:", {
+    currentAccount,
+    isDoctor,
+    isMasterAuthority,
+    hasPublicKey,
+    checkingKey
+  });
+
   return (
     <div className="medical-record-viewer">
       <h3>📋 진료기록 조회</h3>
 
       <div className="private-key-section">
-        <h4>🔑 개인키 업로드</h4>
+        <h4>🔑 개인키 업로드 {isMasterAuthority && "(마스터 계정)"}</h4>
+        {isMasterAuthority && (
+          <p style={{ color: "#666", fontSize: "14px", marginBottom: "10px" }}>
+            ⚠️ 마스터 계정의 개인키를 업로드하여 환자 기록을 복호화할 수 있습니다.
+          </p>
+        )}
         <div className="key-upload">
           <input
             type="file"
@@ -317,7 +381,9 @@ const MedicalRecordViewer = ({
 
       {isDoctor && (
         <div className="doctor-section">
-          <h4>👨‍⚕️ 환자 선택 (의사용)</h4>
+          <h4>
+            {isMasterAuthority ? "🔑 환자 선택 (마스터 계정)" : "👨‍⚕️ 환자 선택 (의사용)"}
+          </h4>
           <div className="patient-selection">
             <input
               type="text"

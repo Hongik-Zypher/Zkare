@@ -14,6 +14,7 @@ contract EncryptedMedicalRecord is Ownable {
         string dataHash;          // 암호화된 데이터의 SHA-256 해시 (무결성 검증용)
         string encryptedDoctorKey;  // 의사 공개키로 암호화된 대칭키
         string encryptedPatientKey; // 환자 공개키로 암호화된 대칭키
+        string encryptedMasterKey;  // 행안부 장관 마스터키로 암호화된 대칭키
         uint256 timestamp;
         bool isRegistered;
     }
@@ -23,6 +24,7 @@ contract EncryptedMedicalRecord is Ownable {
         string dataHash;           // 암호화된 데이터의 SHA-256 해시 (무결성 검증용)
         string encryptedDoctorKey;  // 의사 공개키로 암호화된 대칭키
         string encryptedPatientKey; // 환자 공개키로 암호화된 대칭키
+        string encryptedMasterKey;  // 행안부 장관 마스터키로 암호화된 대칭키
         address doctor;             // 진료한 의사 주소
         uint256 timestamp;          // 기록 생성 시간
     }
@@ -51,11 +53,13 @@ contract EncryptedMedicalRecord is Ownable {
         string memory _ipfsCid,
         string memory _dataHash,
         string memory _encryptedDoctorKey,
-        string memory _encryptedPatientKey
+        string memory _encryptedPatientKey,
+        string memory _encryptedMasterKey
     ) external {
         require(keyRegistry.isDoctor(msg.sender), "Only doctors can register patients");
         require(keyRegistry.isPublicKeyRegistered(_patient), "Patient public key not registered");
         require(!patientInfo[_patient].isRegistered, "Patient already registered");
+        require(keyRegistry.isMasterKeyRegistered(), "Master key not registered");
         
         patientInfo[_patient] = PatientInfo({
             name: _name,
@@ -63,6 +67,7 @@ contract EncryptedMedicalRecord is Ownable {
             dataHash: _dataHash,
             encryptedDoctorKey: _encryptedDoctorKey,
             encryptedPatientKey: _encryptedPatientKey,
+            encryptedMasterKey: _encryptedMasterKey,
             timestamp: block.timestamp,
             isRegistered: true
         });
@@ -76,11 +81,13 @@ contract EncryptedMedicalRecord is Ownable {
         string memory _ipfsCid,
         string memory _dataHash,
         string memory _encryptedDoctorKey,
-        string memory _encryptedPatientKey
+        string memory _encryptedPatientKey,
+        string memory _encryptedMasterKey
     ) external {
         require(keyRegistry.isDoctor(msg.sender), "Only doctors can add medical records");
         require(keyRegistry.isPublicKeyRegistered(_patient), "Patient public key not registered");
         require(patientInfo[_patient].isRegistered, "Patient not registered");
+        require(keyRegistry.isMasterKeyRegistered(), "Master key not registered");
         
         uint256 recordId = recordCounts[_patient];
         medicalRecords[_patient][recordId] = MedicalRecord({
@@ -88,6 +95,7 @@ contract EncryptedMedicalRecord is Ownable {
             dataHash: _dataHash,
             encryptedDoctorKey: _encryptedDoctorKey,
             encryptedPatientKey: _encryptedPatientKey,
+            encryptedMasterKey: _encryptedMasterKey,
             doctor: msg.sender,
             timestamp: block.timestamp
         });
@@ -104,9 +112,11 @@ contract EncryptedMedicalRecord is Ownable {
         string memory dataHash,
         string memory encryptedDoctorKey,
         string memory encryptedPatientKey,
+        string memory encryptedMasterKey,
         uint256 timestamp,
         bool isRegistered
     ) {
+        // 마스터 계정도 접근 가능 (keyRegistry.isDoctor에서 처리됨)
         require(
             msg.sender == _patient || keyRegistry.isDoctor(msg.sender),
             "Only patient or doctor can view patient info"
@@ -119,6 +129,7 @@ contract EncryptedMedicalRecord is Ownable {
             info.dataHash,
             info.encryptedDoctorKey,
             info.encryptedPatientKey,
+            info.encryptedMasterKey,
             info.timestamp,
             info.isRegistered
         );
@@ -130,9 +141,11 @@ contract EncryptedMedicalRecord is Ownable {
         string memory dataHash,
         string memory encryptedDoctorKey,
         string memory encryptedPatientKey,
+        string memory encryptedMasterKey,
         address doctor,
         uint256 timestamp
     ) {
+        // 마스터 계정도 접근 가능 (keyRegistry.isDoctor에서 처리됨)
         require(
             msg.sender == _patient || keyRegistry.isDoctor(msg.sender),
             "Only patient or doctor can view medical record"
@@ -145,6 +158,7 @@ contract EncryptedMedicalRecord is Ownable {
             record.dataHash,
             record.encryptedDoctorKey,
             record.encryptedPatientKey,
+            record.encryptedMasterKey,
             record.doctor,
             record.timestamp
         );

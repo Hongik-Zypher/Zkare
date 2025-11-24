@@ -111,6 +111,12 @@ const KeyGeneration = ({ currentAccount, onKeyRegistered }) => {
             
             console.log('✅ [키 생성] 완료 - 공개키 등록됨');
             
+            // 공개키도 콘솔에 출력 (마스터키 설정용)
+            console.log('📋 공개키 (PEM 형식):');
+            console.log(publicKey);
+            console.log('\n📋 frontend/.env에 추가할 내용:');
+            console.log(`REACT_APP_MASTER_PUBLIC_KEY="${publicKey.replace(/\n/g, '\\n')}"`);
+            
             // 개인키를 state에 저장 (아직 다운로드하지 않음!)
             setGeneratedPrivateKey(privateKey);
             setGeneratedPublicKey(publicKey);
@@ -242,9 +248,41 @@ const KeyGeneration = ({ currentAccount, onKeyRegistered }) => {
         
         console.log('✅ 개인키 다운로드 완료');
         
+        // 공개키도 콘솔에 출력 (마스터키 설정용)
+        if (generatedPublicKey) {
+            console.log('\n📋 공개키 (PEM 형식):');
+            console.log(generatedPublicKey);
+            console.log('\n📋 frontend/.env에 추가할 내용:');
+            console.log(`REACT_APP_MASTER_PUBLIC_KEY="${generatedPublicKey.replace(/\n/g, '\\n')}"`);
+        }
+        
         // 🔒 보안: 메모리에서 개인키 즉시 삭제
         console.warn('🔒 [보안] 메모리에서 개인키 삭제');
         setGeneratedPrivateKey(null);
+    };
+    
+    // 공개키 다운로드 (마스터키 설정용)
+    const downloadPublicKey = () => {
+        if (!generatedPublicKey) {
+            console.warn('⚠️ 다운로드할 공개키가 없습니다');
+            return;
+        }
+        
+        console.log('💾 공개키 다운로드 시작');
+        
+        const blob = new Blob([generatedPublicKey], { type: 'text/plain' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `public_key_${currentAccount}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        console.log('✅ 공개키 다운로드 완료');
+        console.log('\n📋 frontend/.env에 추가할 내용:');
+        console.log(`REACT_APP_MASTER_PUBLIC_KEY="${generatedPublicKey.replace(/\n/g, '\\n')}"`);
     };
     
     // 보호자 설정 + SSS 처리
@@ -422,6 +460,28 @@ const KeyGeneration = ({ currentAccount, onKeyRegistered }) => {
             >
                 <DialogTitle>🔐 키 복구 시스템 설정 (권장)</DialogTitle>
                 <DialogContent>
+                    {/* 공개키 표시 (마스터키 설정용) */}
+                    {generatedPublicKey && (
+                        <Alert severity="info" sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" gutterBottom>
+                                📋 공개키 (마스터키 설정용)
+                            </Typography>
+                            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '10px', wordBreak: 'break-all', mb: 1 }}>
+                                {generatedPublicKey}
+                            </Typography>
+                            <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={downloadPublicKey}
+                                sx={{ mt: 1 }}
+                            >
+                                공개키 다운로드
+                            </Button>
+                            <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
+                                💡 행안부 장관으로 설정하려면 이 공개키를 frontend/.env의 REACT_APP_MASTER_PUBLIC_KEY에 설정하세요.
+                            </Typography>
+                        </Alert>
+                    )}
                     <Stepper activeStep={guardianStep} orientation="vertical">
                         {/* Step 0: 보호자 정보 입력 */}
                         <Step>

@@ -17,13 +17,61 @@ async function main() {
   };
 
   try {
+    // 0. 행안부 장관 마스터키 읽기 (frontend/.env에서)
+    // 우선순위: frontend/.env > 환경 변수
+    let MASTER_PUBLIC_KEY = null;
+    
+    // 1순위: frontend/.env에서 읽기
+    const frontendEnvPath = path.join(__dirname, "../frontend/.env");
+    if (fs.existsSync(frontendEnvPath)) {
+      const frontendEnvContent = fs.readFileSync(frontendEnvPath, "utf8");
+      // REACT_APP_MASTER_PUBLIC_KEY 찾기 (여러 줄 지원)
+      const masterKeyMatch = frontendEnvContent.match(/REACT_APP_MASTER_PUBLIC_KEY\s*=\s*["']?([^"'\n]+(?:\n[^"'\n]+)*)["']?/s);
+      if (masterKeyMatch && masterKeyMatch[1]) {
+        MASTER_PUBLIC_KEY = masterKeyMatch[1].trim();
+        // 따옴표 제거
+        MASTER_PUBLIC_KEY = MASTER_PUBLIC_KEY.replace(/^["']|["']$/g, '');
+        console.log("✅ frontend/.env에서 마스터키를 읽어왔습니다.");
+      }
+    }
+    
+    // 2순위: 환경 변수에서 읽기
+    if (!MASTER_PUBLIC_KEY && process.env.MASTER_PUBLIC_KEY) {
+      MASTER_PUBLIC_KEY = process.env.MASTER_PUBLIC_KEY;
+      console.log("✅ 환경 변수에서 마스터키를 읽어왔습니다.");
+    }
+    
+    // 마스터키가 없어도 괜찮음 (행안부 장관이 나중에 등록 가능)
+    if (!MASTER_PUBLIC_KEY) {
+      console.warn("⚠️  frontend/.env에 REACT_APP_MASTER_PUBLIC_KEY가 없습니다.");
+      console.warn("⚠️  행안부 장관이 나중에 키를 등록하면 자동으로 마스터키로 설정됩니다.");
+      console.warn("   행안부 장관 주소:", "0xbcd4042de499d14e55001ccbb24a551f3b954096");
+    } else {
+      console.log("✅ frontend/.env에서 마스터키를 읽어왔습니다.");
+      console.log("   행안부 장관 주소:", "0xbcd4042de499d14e55001ccbb24a551f3b954096");
+    }
+
     // 1. KeyRegistry 컨트랙트 배포
     console.log("\n🔑 KeyRegistry 컨트랙트 배포 중...");
+    console.log("   행안부 장관 주소:", "0xBcd4042DE499D14e55001CcbB24a551F3b954096");
+    if (MASTER_PUBLIC_KEY) {
+      console.log("   ✅ frontend/.env에서 읽은 마스터키를 사용합니다.");
+      console.log("   💡 또는 행안부 장관이 키를 등록하면 자동으로 마스터키로 설정됩니다.");
+    } else {
+      console.log("   ℹ️  마스터키 없이 배포합니다.");
+      console.log("   💡 행안부 장관이 키를 등록하면 자동으로 마스터키로 설정됩니다.");
+    }
     const KeyRegistry = await hre.ethers.getContractFactory("KeyRegistry");
-    const keyRegistry = await KeyRegistry.deploy();
+    const keyRegistry = await KeyRegistry.deploy(MASTER_PUBLIC_KEY || "");
     await keyRegistry.waitForDeployment();
     const keyRegistryAddress = await keyRegistry.getAddress();
     console.log("✅ KeyRegistry 컨트랙트 배포됨:", keyRegistryAddress);
+    
+    if (MASTER_PUBLIC_KEY) {
+      console.log("✅ 행안부 장관 마스터키가 컨트랙트에 설정되었습니다.");
+    } else {
+      console.log("ℹ️  행안부 장관이 키를 등록하면 자동으로 마스터키로 설정됩니다.");
+    }
 
     deploymentInfo.contracts.keyRegistry = {
       address: keyRegistryAddress,
@@ -63,13 +111,53 @@ async function main() {
     console.log("👨‍⚕️ 배포자를 의사로 등록 중...");
     const certifyDoctorTx = await keyRegistry.certifyDoctor(deployer.address);
     await certifyDoctorTx.wait();
-    console.log("✅ 배포자가 의사로 등록됨");
+    
+    // 검증: 의사 등록 확인
+    const isDoctorRegistered = await keyRegistry.isDoctor(deployer.address);
+    if (!isDoctorRegistered) {
+      throw new Error("❌ 배포자 의사 등록 실패!");
+    }
+    console.log("✅ 배포자가 의사로 등록됨 (검증 완료)");
 
     // KeyRecovery를 신뢰할 수 있는 컨트랙트로 등록
     console.log("🔐 KeyRecovery를 신뢰할 수 있는 컨트랙트로 등록 중...");
     const addTrustedContractTx = await keyRegistry.addTrustedContract(keyRecoveryAddress);
     await addTrustedContractTx.wait();
-    console.log("✅ KeyRecovery가 신뢰할 수 있는 컨트랙트로 등록됨");
+    
+    // 검증: 신뢰할 수 있는 컨트랙트 등록 확인
+    const isTrustedRegistered = await keyRegistry.isTrustedContract(keyRecoveryAddress);
+    if (!isTrustedRegistered) {
+      throw new Error("❌ KeyRecovery 신뢰할 수 있는 컨트랙트 등록 실패!");
+    }
+    console.log("✅ KeyRecovery가 신뢰할 수 있는 컨트랙트로 등록됨 (검증 완료)");
+    
+    // 최종 초기화 검증
+    console.log("\n🔍 최종 초기화 검증 중...");
+    
+    // 마스터키 검증
+    const masterKeyCheck = await keyRegistry.getMasterKey();
+    if (MASTER_PUBLIC_KEY && !masterKeyCheck.isRegistered) {
+      throw new Error("❌ 마스터키 등록 실패!");
+    }
+    if (MASTER_PUBLIC_KEY) {
+      console.log("✅ 마스터키 검증 완료");
+    }
+    
+    // EncryptedMedicalRecord KeyRegistry 연결 검증
+    const keyRegistryInMedical = await encryptedMedicalRecord.keyRegistry();
+    if (keyRegistryInMedical.toLowerCase() !== keyRegistryAddress.toLowerCase()) {
+      throw new Error("❌ EncryptedMedicalRecord KeyRegistry 연결 실패!");
+    }
+    console.log("✅ EncryptedMedicalRecord KeyRegistry 연결 검증 완료");
+    
+    // KeyRecovery KeyRegistry 연결 검증
+    const keyRegistryInRecovery = await keyRecovery.keyRegistry();
+    if (keyRegistryInRecovery.toLowerCase() !== keyRegistryAddress.toLowerCase()) {
+      throw new Error("❌ KeyRecovery KeyRegistry 연결 실패!");
+    }
+    console.log("✅ KeyRecovery KeyRegistry 연결 검증 완료");
+    
+    console.log("✅ 모든 초기화 검증 완료!");
 
     // 5. ABI 파일 복사
     console.log("\n📋 ABI 파일 복사 중...");

@@ -451,6 +451,70 @@ export const getKeyRegistryContract = async () => {
   }
 };
 
+// 행안부 장관 마스터키 조회
+export const getMasterKey = async () => {
+  try {
+    if (!KEY_REGISTRY_ADDRESS) {
+      console.error("❌ KeyRegistry 주소가 설정되지 않았습니다.");
+      return null;
+    }
+
+    // JsonRpcProvider 직접 사용 - ENS 완전 우회
+    const jsonRpcProvider = new ethers.providers.JsonRpcProvider(
+      "http://localhost:8545",
+      {
+        name: "localhost",
+        chainId: 31337,
+      }
+    );
+    const contract = new ethers.Contract(
+      KEY_REGISTRY_ADDRESS,
+      KeyRegistryABI.abi,
+      jsonRpcProvider
+    );
+
+    const masterKeyData = await contract.getMasterKey();
+    console.log("🔑 마스터키 조회 완료");
+    
+    if (!masterKeyData.isRegistered) {
+      console.warn("⚠️ 마스터키가 등록되지 않았습니다.");
+      return null;
+    }
+    
+    return masterKeyData.publicKey;
+  } catch (error) {
+    console.error("❌ 마스터키 조회 오류:", error);
+    return null;
+  }
+};
+
+// 마스터키 등록 여부 확인
+export const isMasterKeyRegistered = async () => {
+  try {
+    if (!KEY_REGISTRY_ADDRESS) {
+      return false;
+    }
+
+    const jsonRpcProvider = new ethers.providers.JsonRpcProvider(
+      "http://localhost:8545",
+      {
+        name: "localhost",
+        chainId: 31337,
+      }
+    );
+    const contract = new ethers.Contract(
+      KEY_REGISTRY_ADDRESS,
+      KeyRegistryABI.abi,
+      jsonRpcProvider
+    );
+
+    return await contract.isMasterKeyRegistered();
+  } catch (error) {
+    console.error("❌ 마스터키 등록 여부 확인 오류:", error);
+    return false;
+  }
+};
+
 // KeyRecovery 컨트랙트 가져오기
 export const getKeyRecoveryContract = async () => {
   try {
@@ -845,20 +909,27 @@ export const registerPatientWithIPFS = async (
   try {
     console.log("📝 [환자 등록 with IPFS] 시작");
 
-    // 1. 기본 정보 암호화
+    // 1. 마스터키 조회
+    const masterPublicKey = await getMasterKey();
+    if (!masterPublicKey) {
+      console.warn("⚠️ 마스터키가 등록되지 않았습니다. 마스터키 없이 암호화합니다.");
+    }
+
+    // 2. 기본 정보 암호화 (의사, 환자, 마스터키)
     const encryptedData = await encryptMedicalRecord(
       basicInfo,
       doctorPublicKey,
-      patientPublicKey
+      patientPublicKey,
+      masterPublicKey
     );
 
-    // 2. 암호화된 데이터를 JSON 문자열로 변환 (IPFS 업로드용)
+    // 3. 암호화된 데이터를 JSON 문자열로 변환 (IPFS 업로드용)
     const encryptedDataString = JSON.stringify({
       encryptedRecord: encryptedData.encryptedRecord,
       iv: encryptedData.iv,
     });
 
-    // 3. IPFS에 업로드
+    // 4. IPFS에 업로드
     console.log("📤 IPFS에 업로드 중...");
     const { cid, hash } = await uploadToIPFS(
       encryptedDataString,
@@ -867,7 +938,7 @@ export const registerPatientWithIPFS = async (
 
     console.log("✅ IPFS 업로드 완료:", { cid, hash });
 
-    // 4. 컨트랙트에 CID와 Hash 저장
+    // 5. 컨트랙트에 CID와 Hash 저장
     const contract = await getEncryptedMedicalRecordContract();
     if (!contract) {
       throw new Error("Contract not initialized");
@@ -879,7 +950,8 @@ export const registerPatientWithIPFS = async (
       cid,
       hash,
       encryptedData.encryptedAESKeyForDoctor,
-      encryptedData.encryptedAESKeyForPatient
+      encryptedData.encryptedAESKeyForPatient,
+      encryptedData.encryptedAESKeyForMaster || ""
     );
 
     await tx.wait();
@@ -913,20 +985,27 @@ export const addMedicalRecordWithIPFS = async (
   try {
     console.log("📝 [의료 기록 추가 with IPFS] 시작");
 
-    // 1. 의료 기록 암호화
+    // 1. 마스터키 조회
+    const masterPublicKey = await getMasterKey();
+    if (!masterPublicKey) {
+      console.warn("⚠️ 마스터키가 등록되지 않았습니다. 마스터키 없이 암호화합니다.");
+    }
+
+    // 2. 의료 기록 암호화 (의사, 환자, 마스터키)
     const encryptedData = await encryptMedicalRecord(
       medicalRecord,
       doctorPublicKey,
-      patientPublicKey
+      patientPublicKey,
+      masterPublicKey
     );
 
-    // 2. 암호화된 데이터를 JSON 문자열로 변환 (IPFS 업로드용)
+    // 3. 암호화된 데이터를 JSON 문자열로 변환 (IPFS 업로드용)
     const encryptedDataString = JSON.stringify({
       encryptedRecord: encryptedData.encryptedRecord,
       iv: encryptedData.iv,
     });
 
-    // 3. IPFS에 업로드
+    // 4. IPFS에 업로드
     console.log("📤 IPFS에 업로드 중...");
     const { cid, hash } = await uploadToIPFS(
       encryptedDataString,
@@ -935,7 +1014,7 @@ export const addMedicalRecordWithIPFS = async (
 
     console.log("✅ IPFS 업로드 완료:", { cid, hash });
 
-    // 4. 컨트랙트에 CID와 Hash 저장
+    // 5. 컨트랙트에 CID와 Hash 저장
     const contract = await getEncryptedMedicalRecordContract();
     if (!contract) {
       throw new Error("Contract not initialized");
@@ -946,7 +1025,8 @@ export const addMedicalRecordWithIPFS = async (
       cid,
       hash,
       encryptedData.encryptedAESKeyForDoctor,
-      encryptedData.encryptedAESKeyForPatient
+      encryptedData.encryptedAESKeyForPatient,
+      encryptedData.encryptedAESKeyForMaster || ""
     );
 
     await tx.wait();
@@ -966,14 +1046,16 @@ export const addMedicalRecordWithIPFS = async (
 /**
  * 환자 기본 정보 조회 (IPFS 통합)
  * @param {address} patientAddress - 환자 주소
- * @param {string} privateKey - 사용자 개인키 (의사 또는 환자)
- * @param {boolean} isDoctor - 의사 여부
+ * @param {string} privateKey - 사용자 개인키 (의사, 환자, 또는 행안부 장관)
+ * @param {boolean} isDoctor - 의사 여부 (선택사항)
+ * @param {string} role - "doctor", "patient", 또는 "master" (선택사항, isDoctor보다 우선)
  * @returns {Promise<Object>} 복호화된 환자 기본 정보
  */
 export const getPatientInfoWithIPFS = async (
   patientAddress,
   privateKey,
-  isDoctor
+  isDoctor = false,
+  role = null
 ) => {
   try {
     console.log("📥 [환자 정보 조회 with IPFS] 시작");
@@ -985,7 +1067,7 @@ export const getPatientInfoWithIPFS = async (
     }
 
     const patientInfo = await contract.getPatientInfo(patientAddress);
-    const { ipfsCid, dataHash, encryptedDoctorKey, encryptedPatientKey } =
+    const { ipfsCid, dataHash, encryptedDoctorKey, encryptedPatientKey, encryptedMasterKey } =
       patientInfo;
 
     if (!ipfsCid || ipfsCid === "") {
@@ -1007,13 +1089,17 @@ export const getPatientInfoWithIPFS = async (
       encryptedRecord: encryptedDataObj.encryptedRecord,
       encryptedAESKeyForDoctor: encryptedDoctorKey,
       encryptedAESKeyForPatient: encryptedPatientKey,
+      encryptedAESKeyForMaster: encryptedMasterKey || "",
       iv: encryptedDataObj.iv,
     };
 
+    // 역할에 따라 복호화 (role 파라미터가 있으면 우선 사용, 없으면 isDoctor로 판단)
+    const decryptionRole = role || (isDoctor ? "doctor" : "patient");
+    console.log("🔓 복호화 역할:", decryptionRole);
     const decryptedBasicInfo = await decryptMedicalRecord(
       encryptedForDecrypt,
       privateKey,
-      isDoctor
+      decryptionRole
     );
 
     console.log("✅ 환자 정보 조회 완료");
@@ -1035,15 +1121,17 @@ export const getPatientInfoWithIPFS = async (
  * 의료 기록 조회 (IPFS 통합)
  * @param {address} patientAddress - 환자 주소
  * @param {number} recordId - 기록 ID
- * @param {string} privateKey - 사용자 개인키 (의사 또는 환자)
- * @param {boolean} isDoctor - 의사 여부
+ * @param {string} privateKey - 사용자 개인키 (의사, 환자, 또는 행안부 장관)
+ * @param {boolean} isDoctor - 의사 여부 (선택사항)
+ * @param {string} role - "doctor", "patient", 또는 "master" (선택사항, isDoctor보다 우선)
  * @returns {Promise<Object>} 복호화된 의료 기록
  */
 export const getMedicalRecordWithIPFS = async (
   patientAddress,
   recordId,
   privateKey,
-  isDoctor
+  isDoctor = false,
+  role = null
 ) => {
   try {
     console.log("📥 [의료 기록 조회 with IPFS] 시작");
@@ -1060,6 +1148,7 @@ export const getMedicalRecordWithIPFS = async (
       dataHash,
       encryptedDoctorKey,
       encryptedPatientKey,
+      encryptedMasterKey,
       doctor,
       timestamp,
     } = record;
@@ -1083,13 +1172,17 @@ export const getMedicalRecordWithIPFS = async (
       encryptedRecord: encryptedDataObj.encryptedRecord,
       encryptedAESKeyForDoctor: encryptedDoctorKey,
       encryptedAESKeyForPatient: encryptedPatientKey,
+      encryptedAESKeyForMaster: encryptedMasterKey || "",
       iv: encryptedDataObj.iv,
     };
 
+    // 역할에 따라 복호화 (role 파라미터가 있으면 우선 사용, 없으면 isDoctor로 판단)
+    const decryptionRole = role || (isDoctor ? "doctor" : "patient");
+    console.log("🔓 복호화 역할:", decryptionRole);
     const decryptedRecord = await decryptMedicalRecord(
       encryptedForDecrypt,
       privateKey,
-      isDoctor
+      decryptionRole
     );
 
     console.log("✅ 의료 기록 조회 완료");

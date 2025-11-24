@@ -14,6 +14,9 @@ import {
   base64ToDataURL,
 } from "../utils/imageUtils";
 
+// 마스터 계정 주소
+const MASTER_AUTHORITY_ADDRESS = "0xBcd4042DE499D14e55001CcbB24a551F3b954096";
+
 const PatientLookup = ({
   keyRegistryContract,
   medicalRecordContract,
@@ -23,6 +26,7 @@ const PatientLookup = ({
   const [patientFound, setPatientFound] = useState(null);
   const [patientInfo, setPatientInfo] = useState(null);
   const [isDoctor, setIsDoctor] = useState(false);
+  const [isMasterAuthority, setIsMasterAuthority] = useState(false); // 마스터 계정 여부
   const [loading, setLoading] = useState(false);
   const [hasDoctorPublicKey, setHasDoctorPublicKey] = useState(true);
   const [checkingKey, setCheckingKey] = useState(true);
@@ -63,14 +67,23 @@ const PatientLookup = ({
 
     setCheckingKey(true);
     try {
-      // contracts.js의 함수 사용 (ENS 에러 없음)
-      const doctorStatus = await checkIsDoctor(currentAccount);
+      // 마스터 계정 주소 확인
+      const isMaster = currentAccount && 
+        currentAccount.toLowerCase() === MASTER_AUTHORITY_ADDRESS.toLowerCase();
+      setIsMasterAuthority(isMaster);
+      
+      // 마스터 계정이면 의사처럼 취급 (환자 조회 가능)
+      const doctorStatus = isMaster || await checkIsDoctor(currentAccount);
       setIsDoctor(doctorStatus);
 
       const keyRegistered = await checkIsPublicKeyRegistered(currentAccount);
       setHasDoctorPublicKey(keyRegistered);
 
-      console.log("👨‍⚕️ 의사 상태:", doctorStatus);
+      if (isMaster) {
+        console.log("🔑 마스터 계정 (의사 권한으로 취급)");
+      } else {
+        console.log("👨‍⚕️ 의사 상태:", doctorStatus);
+      }
       console.log("🔑 공개키 등록 여부:", keyRegistered);
     } catch (error) {
       console.error("의사 상태 확인 오류:", error);
@@ -352,10 +365,21 @@ const PatientLookup = ({
           </p>
           <button
             onClick={() => {
-              window.scrollTo({ top: 0, behavior: "smooth" });
-              alert(
-                '페이지 상단의 "🔑 암호화 키 등록이 필요합니다" 섹션에서 키를 생성해주세요.'
-              );
+              // 키 생성 섹션으로 스크롤
+              const keySection = document.getElementById('key-generation-section');
+              if (keySection) {
+                keySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                // 스크롤 후 약간의 여백을 위해 추가 스크롤
+                setTimeout(() => {
+                  window.scrollBy(0, -20);
+                }, 500);
+              } else {
+                // 키 생성 섹션이 없으면 상단으로 스크롤
+                window.scrollTo({ top: 0, behavior: "smooth" });
+                alert(
+                  '페이지 상단의 "🔑 암호화 키 등록이 필요합니다" 섹션에서 키를 생성해주세요.'
+                );
+              }
             }}
             style={{
               padding: "12px 30px",
@@ -368,7 +392,7 @@ const PatientLookup = ({
               fontWeight: "bold",
             }}
           >
-            키 생성 섹션으로 이동
+            🔑 키 생성 섹션으로 이동
           </button>
         </div>
       </div>
@@ -377,7 +401,9 @@ const PatientLookup = ({
 
   return (
     <div className="patient-lookup">
-      <h3>👨‍⚕️ 환자 조회 및 진료기록 작성</h3>
+      <h3>
+        {isMasterAuthority ? "🔑 환자 조회 및 진료기록 작성 (마스터 계정)" : "👨‍⚕️ 환자 조회 및 진료기록 작성"}
+      </h3>
 
       <div className="lookup-section">
         <div className="input-group">

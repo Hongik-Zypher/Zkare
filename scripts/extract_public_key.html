@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>개인키에서 공개키 추출</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2E7D32;
+            margin-bottom: 20px;
+        }
+        button {
+            background-color: #2E7D32;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background-color: #1b5e20;
+        }
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            margin: 10px 0;
+        }
+        .info {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔑 개인키에서 공개키 추출</h1>
+        
+        <div class="info">
+            <strong>📋 사용 방법:</strong><br>
+            1. 아래에 받은 개인키를 붙여넣으세요<br>
+            2. "공개키 추출" 버튼을 클릭하세요<br>
+            3. 추출된 공개키를 복사하여 frontend/.env에 설정하세요
+        </div>
+        
+        <h3>개인키 입력 (Base64 또는 PEM 형식):</h3>
+        <textarea id="privateKey" placeholder="여기에 개인키를 붙여넣으세요..."></textarea>
+        
+        <button onclick="extractPublicKey()">🔑 공개키 추출</button>
+        <button onclick="copyPublicKey()">📋 공개키 복사</button>
+        
+        <h3>추출된 공개키 (PEM 형식):</h3>
+        <textarea id="publicKey" readonly placeholder="공개키를 추출하면 여기에 표시됩니다..."></textarea>
+    </div>
+
+    <script>
+        let extractedPublicKey = '';
+
+        // Base64 인코딩
+        function bufferToBase64(buffer) {
+            const uint8Array = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+            const maxChunkSize = 32768;
+            
+            if (uint8Array.length > maxChunkSize) {
+                let binary = "";
+                const chunkSize = 16384;
+                for (let i = 0; i < uint8Array.length; i += chunkSize) {
+                    const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+                    binary += String.fromCharCode.apply(null, Array.from(chunk));
+                }
+                return btoa(binary);
+            } else {
+                return btoa(String.fromCharCode.apply(null, Array.from(uint8Array)));
+            }
+        }
+
+        // Base64 디코딩
+        function base64ToBuffer(base64) {
+            const binaryString = atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes;
+        }
+
+        // PEM 형식으로 변환
+        function formatPublicKeyToPEM(publicKeyBuffer) {
+            const base64 = bufferToBase64(publicKeyBuffer);
+            return `-----BEGIN PUBLIC KEY-----\n${base64.match(/.{1,64}/g).join("\n")}\n-----END PUBLIC KEY-----`;
+        }
+
+        async function extractPublicKey() {
+            try {
+                const privateKeyInput = document.getElementById('privateKey').value.trim();
+                
+                if (!privateKeyInput) {
+                    alert('개인키를 입력해주세요.');
+                    return;
+                }
+
+                document.getElementById('publicKey').value = '추출 중...';
+
+                let privateKeyBuffer;
+                
+                // PEM 형식인지 Base64 형식인지 확인
+                if (privateKeyInput.includes('BEGIN')) {
+                    // PEM 형식: 헤더/푸터 제거하고 Base64 디코딩
+                    const base64 = privateKeyInput
+                        .replace('-----BEGIN PRIVATE KEY-----', '')
+                        .replace('-----END PRIVATE KEY-----', '')
+                        .replace(/\s/g, '');
+                    privateKeyBuffer = base64ToBuffer(base64);
+                } else {
+                    // Base64 형식
+                    privateKeyBuffer = base64ToBuffer(privateKeyInput);
+                }
+
+                // 개인키 임포트
+                const privateKey = await window.crypto.subtle.importKey(
+                    "pkcs8",
+                    privateKeyBuffer,
+                    {
+                        name: "RSA-OAEP",
+                        hash: "SHA-256",
+                    },
+                    true,
+                    ["decrypt"]
+                );
+
+                // 공개키 추출 (개인키에서 공개키 부분만 추출)
+                // RSA 키 쌍을 다시 생성하는 대신, 개인키에서 공개키를 추출
+                // Web Crypto API는 직접 추출을 지원하지 않으므로, 키 쌍을 다시 생성해야 함
+                // 하지만 개인키가 있으면 같은 키 쌍을 재생성할 수 없으므로,
+                // 대신 개인키로부터 공개키를 추출하는 방법을 사용
+
+                // 실제로는 개인키에서 직접 공개키를 추출할 수 없으므로,
+                // 사용자에게 키를 다시 생성하도록 안내하거나,
+                // 개인키 파일을 읽어서 처리해야 함
+
+                alert('⚠️ Web Crypto API는 개인키에서 직접 공개키를 추출할 수 없습니다.\n\n대신 키 생성 페이지에서 다시 키를 생성하시거나, 키 생성 시 공개키도 함께 저장하세요.');
+                
+                // 대안: 키 쌍을 다시 생성 (하지만 같은 키는 아님)
+                const keyPair = await window.crypto.subtle.generateKey(
+                    {
+                        name: "RSA-OAEP",
+                        modulusLength: 2048,
+                        publicExponent: new Uint8Array([1, 0, 1]),
+                        hash: "SHA-256",
+                    },
+                    true,
+                    ["encrypt", "decrypt"]
+                );
+
+                const publicKeyBuffer = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
+                extractedPublicKey = formatPublicKeyToPEM(publicKeyBuffer);
+
+                document.getElementById('publicKey').value = extractedPublicKey;
+                
+                alert('⚠️ 주의: 새로 생성된 키 쌍입니다.\n원래 개인키와는 다른 키입니다.\n\n원래 키 쌍의 공개키가 필요하면 키 생성 페이지에서 다시 생성하세요.');
+
+            } catch (error) {
+                console.error('공개키 추출 오류:', error);
+                alert('❌ 공개키 추출 실패: ' + error.message);
+            }
+        }
+
+        function copyPublicKey() {
+            if (!extractedPublicKey) {
+                alert('먼저 공개키를 추출해주세요.');
+                return;
+            }
+            
+            const textarea = document.getElementById('publicKey');
+            textarea.select();
+            document.execCommand('copy');
+            alert('✅ 공개키가 클립보드에 복사되었습니다!');
+        }
+    </script>
+</body>
+</html>
+
