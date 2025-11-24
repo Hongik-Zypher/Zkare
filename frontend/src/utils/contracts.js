@@ -178,15 +178,34 @@ export const isDoctor = async (address) => {
   }
 };
 
-// 의사 추가 (Owner만 가능)
+// 의사 추가 (Owner만 가능) - KeyRegistry 컨트랙트 사용
 export const addDoctor = async (doctorAddress) => {
   try {
-    const contract = await getEncryptedMedicalRecordContract();
-    if (!contract) {
-      throw new Error("Contract not initialized");
+    if (!window.ethereum) {
+      throw new Error("MetaMask가 설치되어 있지 않습니다.");
     }
 
-    const tx = await contract.addDoctor(doctorAddress);
+    if (!KEY_REGISTRY_ADDRESS) {
+      throw new Error("KeyRegistry 주소가 설정되지 않았습니다.");
+    }
+
+    // Provider와 Signer 생성
+    const provider = new ethers.providers.Web3Provider(window.ethereum, {
+      chainId: 31337,
+      name: "localhost",
+      ensAddress: null,
+    });
+    const signer = provider.getSigner();
+
+    // KeyRegistry 컨트랙트 인스턴스 생성
+    const contract = new ethers.Contract(
+      KEY_REGISTRY_ADDRESS,
+      KeyRegistryABI.abi,
+      signer
+    );
+
+    // certifyDoctor 함수 호출
+    const tx = await contract.certifyDoctor(doctorAddress);
     await tx.wait();
 
     console.log("의사 추가 완료:", doctorAddress);
@@ -197,15 +216,37 @@ export const addDoctor = async (doctorAddress) => {
   }
 };
 
-// 의사 제거 (Owner만 가능)
+// 의사 제거 (Owner만 가능) - KeyRegistry 컨트랙트 사용
 export const removeDoctor = async (doctorAddress) => {
   try {
-    if (!medicalRecordContract) {
-      await initializeContracts();
+    if (!window.ethereum) {
+      throw new Error("MetaMask가 설치되어 있지 않습니다.");
     }
 
-    const tx = await medicalRecordContract.removeDoctor(doctorAddress);
+    if (!KEY_REGISTRY_ADDRESS) {
+      throw new Error("KeyRegistry 주소가 설정되지 않았습니다.");
+    }
+
+    // Provider와 Signer 생성
+    const provider = new ethers.providers.Web3Provider(window.ethereum, {
+      chainId: 31337,
+      name: "localhost",
+      ensAddress: null,
+    });
+    const signer = provider.getSigner();
+
+    // KeyRegistry 컨트랙트 인스턴스 생성
+    const contract = new ethers.Contract(
+      KEY_REGISTRY_ADDRESS,
+      KeyRegistryABI.abi,
+      signer
+    );
+
+    // revokeDoctorCertification 함수 호출
+    const tx = await contract.revokeDoctorCertification(doctorAddress);
     await tx.wait();
+
+    console.log("의사 제거 완료:", doctorAddress);
     return tx;
   } catch (error) {
     console.error("의사 제거 중 오류 발생:", error);
@@ -475,16 +516,62 @@ export const getMasterKey = async () => {
 
     const masterKeyData = await contract.getMasterKey();
     console.log("🔑 마스터키 조회 완료");
-    
+
     if (!masterKeyData.isRegistered) {
       console.warn("⚠️ 마스터키가 등록되지 않았습니다.");
       return null;
     }
-    
+
     return masterKeyData.publicKey;
   } catch (error) {
     console.error("❌ 마스터키 조회 오류:", error);
     return null;
+  }
+};
+
+// 마스터 키 등록 (마스터 권한 주소만 가능)
+export const registerMasterKey = async (publicKey) => {
+  try {
+    if (!window.ethereum) {
+      throw new Error("MetaMask가 설치되어 있지 않습니다.");
+    }
+
+    if (!KEY_REGISTRY_ADDRESS) {
+      throw new Error("KeyRegistry 주소가 설정되지 않았습니다.");
+    }
+
+    // Provider와 Signer 생성
+    const provider = new ethers.providers.Web3Provider(window.ethereum, {
+      chainId: 31337,
+      name: "localhost",
+      ensAddress: null,
+    });
+    const signer = provider.getSigner();
+    const currentAddress = await signer.getAddress();
+
+    // 마스터 권한 주소 확인
+    const contract = new ethers.Contract(
+      KEY_REGISTRY_ADDRESS,
+      KeyRegistryABI.abi,
+      signer
+    );
+
+    const masterAuthorityAddress = await contract.MASTER_AUTHORITY_ADDRESS();
+    if (currentAddress.toLowerCase() !== masterAuthorityAddress.toLowerCase()) {
+      throw new Error(
+        `마스터 키는 마스터 권한 주소(${masterAuthorityAddress})만 등록할 수 있습니다. 현재 주소: ${currentAddress}`
+      );
+    }
+
+    // registerPublicKey 호출 (마스터 권한 주소가 호출하면 자동으로 마스터키로 설정됨)
+    const tx = await contract.registerPublicKey(publicKey, false);
+    await tx.wait();
+
+    console.log("✅ 마스터 키 등록 완료");
+    return tx.hash;
+  } catch (error) {
+    console.error("❌ 마스터 키 등록 중 오류:", error);
+    throw error;
   }
 };
 
@@ -912,7 +999,9 @@ export const registerPatientWithIPFS = async (
     // 1. 마스터키 조회
     const masterPublicKey = await getMasterKey();
     if (!masterPublicKey) {
-      console.warn("⚠️ 마스터키가 등록되지 않았습니다. 마스터키 없이 암호화합니다.");
+      console.warn(
+        "⚠️ 마스터키가 등록되지 않았습니다. 마스터키 없이 암호화합니다."
+      );
     }
 
     // 2. 기본 정보 암호화 (의사, 환자, 마스터키)
@@ -988,7 +1077,9 @@ export const addMedicalRecordWithIPFS = async (
     // 1. 마스터키 조회
     const masterPublicKey = await getMasterKey();
     if (!masterPublicKey) {
-      console.warn("⚠️ 마스터키가 등록되지 않았습니다. 마스터키 없이 암호화합니다.");
+      console.warn(
+        "⚠️ 마스터키가 등록되지 않았습니다. 마스터키 없이 암호화합니다."
+      );
     }
 
     // 2. 의료 기록 암호화 (의사, 환자, 마스터키)
@@ -1067,8 +1158,13 @@ export const getPatientInfoWithIPFS = async (
     }
 
     const patientInfo = await contract.getPatientInfo(patientAddress);
-    const { ipfsCid, dataHash, encryptedDoctorKey, encryptedPatientKey, encryptedMasterKey } =
-      patientInfo;
+    const {
+      ipfsCid,
+      dataHash,
+      encryptedDoctorKey,
+      encryptedPatientKey,
+      encryptedMasterKey,
+    } = patientInfo;
 
     if (!ipfsCid || ipfsCid === "") {
       throw new Error("환자 정보가 IPFS에 저장되지 않았습니다.");
