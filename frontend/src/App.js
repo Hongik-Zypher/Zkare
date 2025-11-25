@@ -13,14 +13,45 @@ import "./App.css";
 const theme = createTheme({
   palette: {
     primary: {
-      main: "#2e7d32", // 의료 관련 녹색
+      main: "#2563EB", // 블루 600
+      dark: "#1E40AF", // 호버 색상
     },
     secondary: {
-      main: "#1976d2", // 파란색
+      main: "#10B981", // 성공 색상
+    },
+    error: {
+      main: "#EF4444",
+    },
+    warning: {
+      main: "#B45309",
+      light: "#FFF7D6",
+    },
+    background: {
+      default: "#F9FAFB",
+      paper: "#FFFFFF",
     },
   },
   typography: {
-    fontFamily: '"Noto Sans KR", "Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: 'Inter, "Noto Sans KR", sans-serif',
+    h1: {
+      color: "#1F2937",
+    },
+    h2: {
+      color: "#1F2937",
+    },
+    h3: {
+      color: "#1F2937",
+    },
+    body1: {
+      color: "#1F2937",
+    },
+    body2: {
+      color: "#6B7280",
+    },
+  },
+  spacing: 8,
+  shape: {
+    borderRadius: 8,
   },
 });
 

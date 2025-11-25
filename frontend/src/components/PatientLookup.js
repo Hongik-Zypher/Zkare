@@ -1,5 +1,27 @@
 import React, { useState, useEffect } from "react";
 import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Card,
+  CardContent,
+  Alert,
+  Grid,
+  CircularProgress,
+  Chip,
+  Paper,
+  Divider,
+  IconButton,
+} from "@mui/material";
+import {
+  Search as SearchIcon,
+  Person as PersonIcon,
+  LocalHospital as LocalHospitalIcon,
+  Delete as DeleteIcon,
+  CloudUpload as CloudUploadIcon,
+} from "@mui/icons-material";
+import {
   isDoctor as checkIsDoctor,
   isPublicKeyRegistered as checkIsPublicKeyRegistered,
   getPublicKey,
@@ -13,6 +35,7 @@ import {
   compressImage,
   base64ToDataURL,
 } from "../utils/imageUtils";
+import { COLORS } from "../utils/constants";
 
 // 마스터 계정 주소 (환경 변수에서 읽기)
 const MASTER_AUTHORITY_ADDRESS = process.env.REACT_APP_MASTER_AUTHORITY_ADDRESS || "0xBcd4042DE499D14e55001CcbB24a551F3b954096";
@@ -308,586 +331,744 @@ const PatientLookup = ({
   // 키 확인 중
   if (checkingKey) {
     return (
-      <div className="patient-lookup">
-        <div style={{ textAlign: "center", padding: "40px" }}>
-          <p>의사 권한 확인 중...</p>
-        </div>
-      </div>
+      <Box sx={{ textAlign: "center", py: 8 }}>
+        <CircularProgress size={48} sx={{ mb: 2 }} />
+        <Typography variant="h6" color="text.secondary">
+          의사 권한 확인 중...
+        </Typography>
+      </Box>
     );
   }
 
   // 의사가 아닌 경우
   if (!isDoctor) {
     return (
-      <div className="patient-lookup">
-        <div
-          style={{
-            background: "#ffebee",
-            padding: "20px",
-            borderRadius: "8px",
-            border: "2px solid #f44336",
-            textAlign: "center",
-          }}
-        >
-          <h3 style={{ color: "#d32f2f" }}>🚫 접근 권한이 없습니다</h3>
-          <p>
-            이 기능은 <strong>의사만</strong> 사용할 수 있습니다.
-          </p>
-          <p>의사로 등록된 계정으로 로그인해주세요.</p>
-        </div>
-      </div>
+      <Card 
+        elevation={8}
+        sx={{ 
+          p: 4, 
+          textAlign: "center",
+          background: `linear-gradient(135deg, #ffebee, #ffcdd2)`,
+          border: `3px solid ${COLORS.error}`,
+          borderRadius: '20px',
+        }}
+      >
+        <Typography variant="h4" sx={{ color: COLORS.error, fontWeight: 800, mb: 2 }}>
+          🚫 접근 권한이 없습니다
+        </Typography>
+        <Typography variant="body1" sx={{ color: COLORS.textPrimary, mb: 1 }}>
+          이 기능은 <strong>의사만</strong> 사용할 수 있습니다.
+        </Typography>
+        <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+          의사로 등록된 계정으로 로그인해주세요.
+        </Typography>
+      </Card>
     );
   }
 
   // 공개키가 등록되지 않은 경우
   if (!hasDoctorPublicKey) {
     return (
-      <div className="patient-lookup">
-        <div
-          style={{
-            border: "2px solid #ff9800",
-            borderRadius: "8px",
-            padding: "30px",
-            backgroundColor: "#fff3e0",
-            textAlign: "center",
+      <Card 
+        elevation={12}
+        sx={{ 
+          p: 4,
+          textAlign: "center",
+          background: `linear-gradient(135deg, ${COLORS.warningBg}, #FFF9E6)`,
+          border: `2px solid ${COLORS.warningText}`,
+          borderRadius: '20px',
+          boxShadow: `0 8px 24px rgba(180, 83, 9, 0.2)`,
+        }}
+      >
+        <Typography variant="h4" sx={{ 
+          color: COLORS.warningText, 
+          mb: 2, 
+          fontWeight: 800,
+        }}>
+          ⚠️ 먼저 키를 생성해야 합니다
+        </Typography>
+        <Typography variant="body1" sx={{ 
+          mb: 2, 
+          color: COLORS.warningText,
+          fontSize: '1.0625rem',
+        }}>
+          환자 진료기록을 작성하려면 먼저 RSA 키 쌍을 생성하고 공개키를
+          등록해야 합니다.
+        </Typography>
+        <Typography variant="body2" sx={{ 
+          color: COLORS.warningText, 
+          mb: 4,
+        }}>
+          의사용 개인키로 환자의 의료기록을 암호화하여 안전하게 저장할 수
+          있습니다.
+        </Typography>
+        <Button
+          variant="contained"
+          onClick={() => {
+            const keySection = document.getElementById('key-generation-section');
+            if (keySection) {
+              keySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              setTimeout(() => {
+                window.scrollBy(0, -20);
+              }, 500);
+            } else {
+              window.scrollTo({ top: 0, behavior: "smooth" });
+              alert(
+                '페이지 상단의 "🔑 암호화 키 등록이 필요합니다" 섹션에서 키를 생성해주세요.'
+              );
+            }
+          }}
+          sx={{
+            px: 4,
+            py: 1.5,
+            fontSize: '1rem',
+            fontWeight: 700,
+            borderRadius: '12px',
+            background: `linear-gradient(45deg, ${COLORS.primary}, ${COLORS.primaryHover})`,
+            boxShadow: `0 4px 16px rgba(37, 99, 235, 0.4)`,
+            '&:hover': {
+              boxShadow: `0 6px 20px rgba(37, 99, 235, 0.5)`,
+              transform: 'translateY(-2px)',
+            },
+            transition: 'all 0.3s ease',
           }}
         >
-          <h3 style={{ color: "#f57c00", marginBottom: "20px" }}>
-            ⚠️ 먼저 키를 생성해야 합니다
-          </h3>
-          <p style={{ fontSize: "16px", marginBottom: "10px" }}>
-            환자 진료기록을 작성하려면 먼저 RSA 키 쌍을 생성하고 공개키를
-            등록해야 합니다.
-          </p>
-          <p style={{ fontSize: "14px", color: "#666", marginBottom: "30px" }}>
-            의사용 개인키로 환자의 의료기록을 암호화하여 안전하게 저장할 수
-            있습니다.
-          </p>
-          <button
-            onClick={() => {
-              // 키 생성 섹션으로 스크롤
-              const keySection = document.getElementById('key-generation-section');
-              if (keySection) {
-                keySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                // 스크롤 후 약간의 여백을 위해 추가 스크롤
-                setTimeout(() => {
-                  window.scrollBy(0, -20);
-                }, 500);
-              } else {
-                // 키 생성 섹션이 없으면 상단으로 스크롤
-                window.scrollTo({ top: 0, behavior: "smooth" });
-                alert(
-                  '페이지 상단의 "🔑 암호화 키 등록이 필요합니다" 섹션에서 키를 생성해주세요.'
-                );
-              }
-            }}
-            style={{
-              padding: "12px 30px",
-              fontSize: "16px",
-              backgroundColor: "#2e7d32",
-              color: "white",
-              border: "none",
-              borderRadius: "6px",
-              cursor: "pointer",
-              fontWeight: "bold",
-            }}
-          >
-            🔑 키 생성 섹션으로 이동
-          </button>
-        </div>
-      </div>
+          🔑 키 생성 섹션으로 이동
+        </Button>
+      </Card>
     );
   }
 
   return (
-    <div className="patient-lookup">
-      <h3>
-        {isMasterAuthority ? "🔑 환자 조회 및 진료기록 작성 (마스터 계정)" : "👨‍⚕️ 환자 조회 및 진료기록 작성"}
-      </h3>
+    <Box>
+      <Box sx={{ mb: 4 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+          {isMasterAuthority ? (
+            <LocalHospitalIcon sx={{ fontSize: 40, color: COLORS.primary }} />
+          ) : (
+            <PersonIcon sx={{ fontSize: 40, color: COLORS.primary }} />
+          )}
+          <Typography variant="h4" sx={{ 
+            fontWeight: 800,
+            color: COLORS.textPrimary,
+          }}>
+            {isMasterAuthority ? "환자 조회 및 진료기록 작성 (마스터 계정)" : "환자 조회 및 진료기록 작성"}
+          </Typography>
+        </Box>
 
-      <div className="lookup-section">
-        <div className="input-group">
-          <label>환자 주소:</label>
-          <input
-            type="text"
-            value={patientAddress}
-            onChange={(e) => setPatientAddress(e.target.value)}
-            placeholder="0x..."
-            className="address-input"
-          />
-          <button
-            onClick={handlePatientLookup}
-            disabled={loading || !patientAddress}
-            className="lookup-button"
-          >
-            {loading ? "조회 중..." : "환자 조회"}
-          </button>
-        </div>
-      </div>
+        <Paper 
+          elevation={8}
+          sx={{ 
+            p: 3, 
+            borderRadius: '16px',
+            background: `linear-gradient(135deg, ${COLORS.cardBg}, ${COLORS.primaryBg})`,
+            border: `1px solid ${COLORS.border}`,
+          }}
+        >
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+            <TextField
+              fullWidth
+              label="환자 주소"
+              placeholder="0x..."
+              value={patientAddress}
+              onChange={(e) => setPatientAddress(e.target.value)}
+              variant="outlined"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: '12px',
+                  backgroundColor: COLORS.cardBg,
+                },
+              }}
+            />
+            <Button
+              variant="contained"
+              onClick={handlePatientLookup}
+              disabled={loading || !patientAddress}
+              startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <SearchIcon />}
+              sx={{
+                px: 3,
+                py: 1.5,
+                borderRadius: '12px',
+                background: `linear-gradient(45deg, ${COLORS.primary}, ${COLORS.primaryHover})`,
+                boxShadow: `0 4px 16px rgba(37, 99, 235, 0.4)`,
+                fontWeight: 600,
+                fontSize: '0.875rem',
+                textTransform: 'none',
+                whiteSpace: 'nowrap',
+                '&:hover': {
+                  boxShadow: `0 6px 20px rgba(37, 99, 235, 0.5)`,
+                  transform: 'translateY(-2px)',
+                },
+                '&:disabled': {
+                  background: COLORS.border,
+                },
+                transition: 'all 0.3s ease',
+              }}
+            >
+              {loading ? "조회 중..." : "환자 조회"}
+            </Button>
+          </Box>
+        </Paper>
+      </Box>
 
       {patientFound === "not_registered" && (
-        <div className="patient-status not-registered">
-          <h4>❌ 등록되지 않은 환자</h4>
-          <p>해당 주소의 환자는 공개키가 등록되지 않았습니다.</p>
-        </div>
+        <Alert 
+          severity="error" 
+          sx={{ 
+            mb: 3,
+            borderRadius: '16px',
+            fontSize: '1rem',
+            '& .MuiAlert-icon': {
+              fontSize: '2rem',
+            },
+          }}
+        >
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+            ❌ 등록되지 않은 환자
+          </Typography>
+          <Typography variant="body1">
+            해당 주소의 환자는 공개키가 등록되지 않았습니다.
+          </Typography>
+        </Alert>
       )}
 
       {patientFound === "new" && (
-        <div className="patient-status new-patient">
-          <h4>👤 새 환자 등록</h4>
-          <p>
-            처음 등록하는 환자입니다. 기본정보를 포함한 진료기록을 작성해주세요.
-          </p>
+        <Card 
+          elevation={12}
+          sx={{ 
+            mb: 4,
+            borderRadius: '20px',
+            background: `linear-gradient(135deg, ${COLORS.cardBg}, ${COLORS.rolePatient})`,
+            border: `2px solid ${COLORS.success}`,
+            boxShadow: '0 8px 24px rgba(16, 185, 129, 0.2)',
+          }}
+        >
+          <CardContent sx={{ p: 4 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+              <PersonIcon sx={{ fontSize: 40, color: COLORS.success }} />
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 800, color: COLORS.textPrimary }}>
+                  새 환자 등록
+                </Typography>
+                <Typography variant="body1" sx={{ color: COLORS.textSecondary }}>
+                  처음 등록하는 환자입니다. 기본정보를 포함한 진료기록을 작성해주세요.
+                </Typography>
+              </Box>
+            </Box>
 
-          <div className="medical-record-form">
-            <h5>기본정보</h5>
-            <div className="form-row">
-              <input
-                type="text"
-                placeholder="이름"
-                value={medicalRecordForm.name}
-                onChange={(e) =>
-                  setMedicalRecordForm({
-                    ...medicalRecordForm,
-                    name: e.target.value,
-                  })
-                }
-              />
-              <input
-                type="text"
-                placeholder="키 (cm)"
-                value={medicalRecordForm.height}
-                onChange={(e) =>
-                  setMedicalRecordForm({
-                    ...medicalRecordForm,
-                    height: e.target.value,
-                  })
-                }
-              />
-              <input
-                type="text"
-                placeholder="몸무게 (kg)"
-                value={medicalRecordForm.weight}
-                onChange={(e) =>
-                  setMedicalRecordForm({
-                    ...medicalRecordForm,
-                    weight: e.target.value,
-                  })
-                }
-              />
-            </div>
-            <div className="form-row">
-              <select
-                value={medicalRecordForm.bloodType}
-                onChange={(e) =>
-                  setMedicalRecordForm({
-                    ...medicalRecordForm,
-                    bloodType: e.target.value,
-                  })
-                }
-              >
-                <option value="">혈액형 선택</option>
-                <option value="A">A형</option>
-                <option value="B">B형</option>
-                <option value="AB">AB형</option>
-                <option value="O">O형</option>
-              </select>
-              <input
-                type="password"
-                placeholder="주민번호"
-                value={medicalRecordForm.ssn}
-                onChange={(e) =>
-                  setMedicalRecordForm({
-                    ...medicalRecordForm,
-                    ssn: e.target.value,
-                  })
-                }
-              />
-            </div>
-          </div>
-        </div>
+            <Divider sx={{ my: 3 }} />
+
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: COLORS.textPrimary }}>
+              기본정보
+            </Typography>
+            <Grid container spacing={3}>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="이름"
+                  placeholder="환자 이름"
+                  value={medicalRecordForm.name}
+                  onChange={(e) =>
+                    setMedicalRecordForm({
+                      ...medicalRecordForm,
+                      name: e.target.value,
+                    })
+                  }
+                  variant="outlined"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '12px',
+                    },
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="키 (cm)"
+                  placeholder="170"
+                  value={medicalRecordForm.height}
+                  onChange={(e) =>
+                    setMedicalRecordForm({
+                      ...medicalRecordForm,
+                      height: e.target.value,
+                    })
+                  }
+                  variant="outlined"
+                  type="number"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '12px',
+                    },
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="몸무게 (kg)"
+                  placeholder="70"
+                  value={medicalRecordForm.weight}
+                  onChange={(e) =>
+                    setMedicalRecordForm({
+                      ...medicalRecordForm,
+                      weight: e.target.value,
+                    })
+                  }
+                  variant="outlined"
+                  type="number"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '12px',
+                    },
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  select
+                  label="혈액형"
+                  value={medicalRecordForm.bloodType}
+                  onChange={(e) =>
+                    setMedicalRecordForm({
+                      ...medicalRecordForm,
+                      bloodType: e.target.value,
+                    })
+                  }
+                  variant="outlined"
+                  SelectProps={{
+                    native: true,
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '12px',
+                    },
+                  }}
+                >
+                  <option value="">혈액형 선택</option>
+                  <option value="A">A형</option>
+                  <option value="B">B형</option>
+                  <option value="AB">AB형</option>
+                  <option value="O">O형</option>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="주민번호"
+                  placeholder="주민번호"
+                  value={medicalRecordForm.ssn}
+                  onChange={(e) =>
+                    setMedicalRecordForm({
+                      ...medicalRecordForm,
+                      ssn: e.target.value,
+                    })
+                  }
+                  variant="outlined"
+                  type="password"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '12px',
+                    },
+                  }}
+                />
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
       )}
 
       {patientFound === "existing" && patientInfo && (
-        <div className="patient-status existing-patient">
-          <h4>📋 기존 환자</h4>
-          <p>환자 이름: {patientInfo.name}</p>
-          <p>진료기록을 추가해주세요.</p>
-        </div>
+        <Card 
+          elevation={8}
+          sx={{ 
+            mb: 4,
+            p: 3,
+            borderRadius: '16px',
+            background: `linear-gradient(135deg, ${COLORS.cardBg}, ${COLORS.primaryBg})`,
+            border: `2px solid ${COLORS.primary}`,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <LocalHospitalIcon sx={{ fontSize: 36, color: COLORS.primary }} />
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: COLORS.textPrimary }}>
+                📋 기존 환자
+              </Typography>
+              <Typography variant="h6" sx={{ color: COLORS.textSecondary, mt: 0.5 }}>
+                환자 이름: {patientInfo.name}
+              </Typography>
+              <Typography variant="body1" sx={{ color: COLORS.textSecondary, mt: 1 }}>
+                진료기록을 추가해주세요.
+              </Typography>
+            </Box>
+          </Box>
+        </Card>
       )}
 
       {(patientFound === "new" || patientFound === "existing") && (
-        <div className="medical-record-form">
-          <div
-            style={{
-              background: "#e3f2fd",
-              padding: "15px",
-              borderRadius: "8px",
-              marginBottom: "20px",
-              border: "1px solid #2196f3",
-            }}
-          >
-            <h5 style={{ margin: "0 0 10px 0", color: "#1976d2" }}>
-              📝 진료기록 작성
-            </h5>
-            <p style={{ margin: 0, fontSize: "14px", color: "#666" }}>
-              모든 정보는 AES-256 암호화되어 저장되며, 의사와 환자만 복호화할 수
-              있습니다.
-            </p>
-          </div>
-
-          <div className="form-column">
-            <div className="form-field">
-              <label
-                style={{
-                  fontWeight: "bold",
-                  marginBottom: "5px",
-                  display: "block",
-                }}
-              >
-                🤒 주요 증상 *
-              </label>
-              <textarea
-                placeholder="환자가 호소하는 주요 증상을 상세히 기록해주세요..."
-                value={medicalRecordForm.symptoms}
-                onChange={(e) =>
-                  setMedicalRecordForm({
-                    ...medicalRecordForm,
-                    symptoms: e.target.value,
-                  })
-                }
-                rows={3}
-                required
-                style={{ width: "100%", minHeight: "80px" }}
-              />
-            </div>
-
-            <div className="form-field">
-              <label
-                style={{
-                  fontWeight: "bold",
-                  marginBottom: "5px",
-                  display: "block",
-                }}
-              >
-                🩺 진단 결과 *
-              </label>
-              <textarea
-                placeholder="진단명 및 진단 근거를 기록해주세요..."
-                value={medicalRecordForm.diagnosis}
-                onChange={(e) =>
-                  setMedicalRecordForm({
-                    ...medicalRecordForm,
-                    diagnosis: e.target.value,
-                  })
-                }
-                rows={3}
-                required
-                style={{ width: "100%", minHeight: "80px" }}
-              />
-            </div>
-
-            <div className="form-field">
-              <label
-                style={{
-                  fontWeight: "bold",
-                  marginBottom: "5px",
-                  display: "block",
-                }}
-              >
-                🏥 치료 계획
-              </label>
-              <textarea
-                placeholder="치료 방법, 시술 내용, 후속 치료 계획 등..."
-                value={medicalRecordForm.treatment}
-                onChange={(e) =>
-                  setMedicalRecordForm({
-                    ...medicalRecordForm,
-                    treatment: e.target.value,
-                  })
-                }
-                rows={3}
-                style={{ width: "100%", minHeight: "80px" }}
-              />
-            </div>
-
-            <div className="form-field">
-              <label
-                style={{
-                  fontWeight: "bold",
-                  marginBottom: "5px",
-                  display: "block",
-                }}
-              >
-                💊 처방전
-              </label>
-              <textarea
-                placeholder="처방약물명, 용법, 용량, 복용기간 등..."
-                value={medicalRecordForm.prescription}
-                onChange={(e) =>
-                  setMedicalRecordForm({
-                    ...medicalRecordForm,
-                    prescription: e.target.value,
-                  })
-                }
-                rows={3}
-                style={{ width: "100%", minHeight: "80px" }}
-              />
-            </div>
-
-            <div className="form-field">
-              <label
-                style={{
-                  fontWeight: "bold",
-                  marginBottom: "5px",
-                  display: "block",
-                }}
-              >
-                📋 추가 메모
-              </label>
-              <textarea
-                placeholder="환자 특이사항, 주의사항, 다음 진료 예약 등..."
-                value={medicalRecordForm.notes}
-                onChange={(e) =>
-                  setMedicalRecordForm({
-                    ...medicalRecordForm,
-                    notes: e.target.value,
-                  })
-                }
-                rows={2}
-                style={{ width: "100%", minHeight: "60px" }}
-              />
-            </div>
-
-            <div className="form-field">
-              <label
-                style={{
-                  fontWeight: "bold",
-                  marginBottom: "5px",
-                  display: "block",
-                }}
-              >
-                📷 이미지 첨부 (선택사항)
-              </label>
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={async (e) => {
-                  const files = Array.from(e.target.files);
-                  const MAX_IMAGES = 10; // 최대 이미지 개수
-                  const MAX_TOTAL_SIZE = 5 * 1024 * 1024; // 최대 총 크기 5MB
-
-                  if (selectedImages.length + files.length > MAX_IMAGES) {
-                    alert(
-                      `최대 ${MAX_IMAGES}개의 이미지만 첨부할 수 있습니다.\n현재: ${selectedImages.length}개, 추가 시도: ${files.length}개`
-                    );
-                    e.target.value = "";
-                    return;
-                  }
-
-                  const validFiles = [];
-                  const previews = [];
-                  let totalSize = 0;
-
-                  for (const file of files) {
-                    if (!validateImageFile(file)) {
-                      alert(
-                        `${file.name}: 지원하지 않는 형식이거나 파일 크기가 너무 큽니다. (최대 10MB)`
-                      );
-                      continue;
-                    }
-
-                    try {
-                      // 이미지 압축 (더 강력한 압축)
-                      const compressedFile = await compressImage(
-                        file,
-                        1280,
-                        1280,
-                        0.7
-                      );
-
-                      if (totalSize + compressedFile.size > MAX_TOTAL_SIZE) {
-                        alert(
-                          `이미지 총 크기가 너무 큽니다. (최대 5MB)\n현재: ${(
-                            totalSize /
-                            1024 /
-                            1024
-                          ).toFixed(2)}MB`
-                        );
-                        break;
-                      }
-
-                      validFiles.push(compressedFile);
-                      totalSize += compressedFile.size;
-
-                      // 미리보기 생성
-                      const base64 = await fileToBase64(compressedFile);
-                      previews.push({
-                        data: base64ToDataURL(base64, file.type),
-                        name: file.name,
-                      });
-                    } catch (error) {
-                      console.error("이미지 처리 오류:", error);
-                      alert(`${file.name} 처리 중 오류가 발생했습니다.`);
-                    }
-                  }
-
-                  setSelectedImages((prev) => [...prev, ...validFiles]);
-                  setImagePreviews((prev) => [...prev, ...previews]);
-
-                  // input 초기화 (같은 파일 다시 선택 가능하도록)
-                  e.target.value = "";
-                }}
-                style={{ width: "100%", padding: "8px", marginBottom: "10px" }}
-              />
-              <p style={{ fontSize: "12px", color: "#666", marginTop: "5px" }}>
-                이미지는 암호화되어 IPFS에 저장됩니다. (최대 10개, 총 5MB 이하,
-                JPG/PNG/GIF/WebP)
-              </p>
-
-              {/* 이미지 미리보기 */}
-              {imagePreviews.length > 0 && (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "repeat(auto-fill, minmax(150px, 1fr))",
-                    gap: "10px",
-                    marginTop: "15px",
-                  }}
-                >
-                  {imagePreviews.map((preview, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        position: "relative",
-                        border: "1px solid #ddd",
-                        borderRadius: "8px",
-                        overflow: "hidden",
-                        background: "#f5f5f5",
-                      }}
-                    >
-                      <img
-                        src={preview.data}
-                        alt={preview.name}
-                        style={{
-                          width: "100%",
-                          height: "150px",
-                          objectFit: "cover",
-                          display: "block",
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedImages((prev) =>
-                            prev.filter((_, i) => i !== index)
-                          );
-                          setImagePreviews((prev) =>
-                            prev.filter((_, i) => i !== index)
-                          );
-                        }}
-                        style={{
-                          position: "absolute",
-                          top: "5px",
-                          right: "5px",
-                          background: "rgba(244, 67, 54, 0.9)",
-                          color: "white",
-                          border: "none",
-                          borderRadius: "50%",
-                          width: "24px",
-                          height: "24px",
-                          cursor: "pointer",
-                          fontSize: "14px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        ×
-                      </button>
-                      <p
-                        style={{
-                          fontSize: "10px",
-                          padding: "5px",
-                          margin: 0,
-                          textOverflow: "ellipsis",
-                          overflow: "hidden",
-                          whiteSpace: "nowrap",
-                        }}
-                        title={preview.name}
-                      >
-                        {preview.name}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div
-            style={{
-              marginTop: "20px",
-              paddingTop: "20px",
-              borderTop: "1px solid #ddd",
-            }}
-          >
-            <button
-              onClick={handleSubmitMedicalRecord}
-              disabled={
-                loading ||
-                uploadingImages ||
-                !medicalRecordForm.symptoms ||
-                !medicalRecordForm.diagnosis
-              }
-              className="submit-button"
-              style={{
-                width: "100%",
-                padding: "15px",
-                fontSize: "16px",
-                fontWeight: "bold",
-                background:
-                  !medicalRecordForm.symptoms ||
-                  !medicalRecordForm.diagnosis ||
-                  uploadingImages
-                    ? "#ccc"
-                    : "linear-gradient(45deg, #2196f3 30%, #21cbf3 90%)",
-                border: "none",
-                borderRadius: "8px",
-                color: "white",
-                cursor:
-                  !medicalRecordForm.symptoms ||
-                  !medicalRecordForm.diagnosis ||
-                  uploadingImages
-                    ? "not-allowed"
-                    : "pointer",
+        <Card 
+          elevation={12}
+          sx={{ 
+            mb: 4,
+            borderRadius: '20px',
+            background: `linear-gradient(135deg, ${COLORS.cardBg}, ${COLORS.primaryBg})`,
+            border: `2px solid ${COLORS.primary}`,
+            boxShadow: '0 8px 24px rgba(37, 99, 235, 0.15)',
+          }}
+        >
+          <CardContent sx={{ p: 4 }}>
+            <Alert 
+              severity="info" 
+              sx={{ 
+                mb: 4,
+                borderRadius: '12px',
+                backgroundColor: COLORS.primaryBg,
+                border: `2px solid ${COLORS.primary}`,
               }}
             >
-              {uploadingImages
-                ? "📷 이미지 처리 중..."
-                : loading
-                ? "🔐 암호화 및 저장 중..."
-                : "🔒 암호화하여 진료기록 저장"}
-            </button>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: COLORS.primary }}>
+                📝 진료기록 작성
+              </Typography>
+              <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                모든 정보는 AES-256 암호화되어 저장되며, 의사와 환자만 복호화할 수 있습니다.
+              </Typography>
+            </Alert>
 
-            {(!medicalRecordForm.symptoms || !medicalRecordForm.diagnosis) && (
-              <p
-                style={{
-                  color: "#f44336",
-                  fontSize: "14px",
-                  marginTop: "10px",
-                  textAlign: "center",
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="🤒 주요 증상 *"
+                  placeholder="환자가 호소하는 주요 증상을 상세히 기록해주세요..."
+                  value={medicalRecordForm.symptoms}
+                  onChange={(e) =>
+                    setMedicalRecordForm({
+                      ...medicalRecordForm,
+                      symptoms: e.target.value,
+                    })
+                  }
+                  multiline
+                  rows={4}
+                  required
+                  variant="outlined"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '12px',
+                    },
+                  }}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="🩺 진단 결과 *"
+                  placeholder="진단명 및 진단 근거를 기록해주세요..."
+                  value={medicalRecordForm.diagnosis}
+                  onChange={(e) =>
+                    setMedicalRecordForm({
+                      ...medicalRecordForm,
+                      diagnosis: e.target.value,
+                    })
+                  }
+                  multiline
+                  rows={4}
+                  required
+                  variant="outlined"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '12px',
+                    },
+                  }}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="🏥 치료 계획"
+                  placeholder="치료 방법, 시술 내용, 후속 치료 계획 등..."
+                  value={medicalRecordForm.treatment}
+                  onChange={(e) =>
+                    setMedicalRecordForm({
+                      ...medicalRecordForm,
+                      treatment: e.target.value,
+                    })
+                  }
+                  multiline
+                  rows={4}
+                  variant="outlined"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '12px',
+                    },
+                  }}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="💊 처방전"
+                  placeholder="처방약물명, 용법, 용량, 복용기간 등..."
+                  value={medicalRecordForm.prescription}
+                  onChange={(e) =>
+                    setMedicalRecordForm({
+                      ...medicalRecordForm,
+                      prescription: e.target.value,
+                    })
+                  }
+                  multiline
+                  rows={4}
+                  variant="outlined"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '12px',
+                    },
+                  }}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="📋 추가 메모"
+                  placeholder="환자 특이사항, 주의사항, 다음 진료 예약 등..."
+                  value={medicalRecordForm.notes}
+                  onChange={(e) =>
+                    setMedicalRecordForm({
+                      ...medicalRecordForm,
+                      notes: e.target.value,
+                    })
+                  }
+                  multiline
+                  rows={3}
+                  variant="outlined"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '12px',
+                    },
+                  }}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: COLORS.textPrimary }}>
+                    📷 이미지 첨부 (선택사항)
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    startIcon={<CloudUploadIcon />}
+                    sx={{
+                      mb: 2,
+                      borderRadius: '12px',
+                      borderColor: COLORS.primary,
+                      color: COLORS.primary,
+                      fontWeight: 600,
+                      '&:hover': {
+                        borderColor: COLORS.primaryHover,
+                        backgroundColor: COLORS.primaryBg,
+                      },
+                    }}
+                  >
+                    이미지 선택
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      hidden
+                      onChange={async (e) => {
+                        const files = Array.from(e.target.files);
+                        const MAX_IMAGES = 10;
+                        const MAX_TOTAL_SIZE = 5 * 1024 * 1024;
+
+                        if (selectedImages.length + files.length > MAX_IMAGES) {
+                          alert(
+                            `최대 ${MAX_IMAGES}개의 이미지만 첨부할 수 있습니다.\n현재: ${selectedImages.length}개, 추가 시도: ${files.length}개`
+                          );
+                          e.target.value = "";
+                          return;
+                        }
+
+                        const validFiles = [];
+                        const previews = [];
+                        let totalSize = 0;
+
+                        for (const file of files) {
+                          if (!validateImageFile(file)) {
+                            alert(
+                              `${file.name}: 지원하지 않는 형식이거나 파일 크기가 너무 큽니다. (최대 10MB)`
+                            );
+                            continue;
+                          }
+
+                          try {
+                            const compressedFile = await compressImage(file, 1280, 1280, 0.7);
+
+                            if (totalSize + compressedFile.size > MAX_TOTAL_SIZE) {
+                              alert(
+                                `이미지 총 크기가 너무 큽니다. (최대 5MB)\n현재: ${(
+                                  totalSize / 1024 / 1024
+                                ).toFixed(2)}MB`
+                              );
+                              break;
+                            }
+
+                            validFiles.push(compressedFile);
+                            totalSize += compressedFile.size;
+
+                            const base64 = await fileToBase64(compressedFile);
+                            previews.push({
+                              data: base64ToDataURL(base64, file.type),
+                              name: file.name,
+                            });
+                          } catch (error) {
+                            console.error("이미지 처리 오류:", error);
+                            alert(`${file.name} 처리 중 오류가 발생했습니다.`);
+                          }
+                        }
+
+                        setSelectedImages((prev) => [...prev, ...validFiles]);
+                        setImagePreviews((prev) => [...prev, ...previews]);
+                        e.target.value = "";
+                      }}
+                    />
+                  </Button>
+                  <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, mb: 2 }}>
+                    이미지는 암호화되어 IPFS에 저장됩니다. (최대 10개, 총 5MB 이하, JPG/PNG/GIF/WebP)
+                  </Typography>
+
+                  {imagePreviews.length > 0 && (
+                    <Grid container spacing={2} sx={{ mt: 2 }}>
+                      {imagePreviews.map((preview, index) => (
+                        <Grid item xs={6} sm={4} md={3} key={index}>
+                          <Card
+                            sx={{
+                              position: 'relative',
+                              borderRadius: '12px',
+                              overflow: 'hidden',
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                              '&:hover': {
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                              },
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                width: '100%',
+                                height: '150px',
+                                overflow: 'hidden',
+                                backgroundColor: COLORS.border,
+                              }}
+                            >
+                              <img
+                                src={preview.data}
+                                alt={preview.name}
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'cover',
+                                }}
+                              />
+                            </Box>
+                            <IconButton
+                              onClick={() => {
+                                setSelectedImages((prev) => prev.filter((_, i) => i !== index));
+                                setImagePreviews((prev) => prev.filter((_, i) => i !== index));
+                              }}
+                              sx={{
+                                position: 'absolute',
+                                top: 8,
+                                right: 8,
+                                backgroundColor: 'rgba(239, 68, 68, 0.9)',
+                                color: 'white',
+                                '&:hover': {
+                                  backgroundColor: COLORS.error,
+                                },
+                                width: 32,
+                                height: 32,
+                              }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                            <CardContent sx={{ p: 1 }}>
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  display: 'block',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  fontSize: '0.7rem',
+                                }}
+                                title={preview.name}
+                              >
+                                {preview.name}
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                      ))}
+                    </Grid>
+                  )}
+                </Box>
+              </Grid>
+            </Grid>
+
+            <Divider sx={{ my: 4 }} />
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <Button
+                variant="contained"
+                onClick={handleSubmitMedicalRecord}
+                disabled={
+                  loading ||
+                  uploadingImages ||
+                  !medicalRecordForm.symptoms ||
+                  !medicalRecordForm.diagnosis
+                }
+                size="large"
+                sx={{
+                  px: 6,
+                  py: 1.75,
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  borderRadius: '12px',
+                  background: `linear-gradient(45deg, ${COLORS.primary}, ${COLORS.primaryHover})`,
+                  boxShadow: `0 4px 16px rgba(37, 99, 235, 0.4)`,
+                  textTransform: 'none',
+                  '&:hover': {
+                    boxShadow: `0 6px 20px rgba(37, 99, 235, 0.5)`,
+                    transform: 'translateY(-2px)',
+                  },
+                  '&:disabled': {
+                    background: COLORS.border,
+                    boxShadow: 'none',
+                  },
+                  transition: 'all 0.3s ease',
                 }}
               >
-                * 증상과 진단은 필수 항목입니다.
-              </p>
-            )}
-          </div>
-        </div>
+                {uploadingImages
+                  ? "📷 이미지 처리 중..."
+                  : loading
+                  ? "🔐 암호화 및 저장 중..."
+                  : "🔒 암호화하여 진료기록 저장"}
+              </Button>
+
+              {(!medicalRecordForm.symptoms || !medicalRecordForm.diagnosis) && (
+                <Typography variant="body2" sx={{ color: COLORS.error, fontWeight: 600 }}>
+                  * 증상과 진단은 필수 항목입니다.
+                </Typography>
+              )}
+            </Box>
+          </CardContent>
+        </Card>
       )}
-    </div>
+    </Box>
   );
 };
 

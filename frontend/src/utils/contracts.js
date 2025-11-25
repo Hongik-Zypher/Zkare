@@ -178,15 +178,15 @@ export const isDoctor = async (address) => {
   }
 };
 
-// 의사 추가 (Owner만 가능)
+// 의사 추가 (Owner만 가능) - KeyRegistry의 certifyDoctor 사용
 export const addDoctor = async (doctorAddress) => {
   try {
-    const contract = await getEncryptedMedicalRecordContract();
+    const contract = await getKeyRegistryContract();
     if (!contract) {
       throw new Error("Contract not initialized");
     }
 
-    const tx = await contract.addDoctor(doctorAddress);
+    const tx = await contract.certifyDoctor(doctorAddress);
     await tx.wait();
 
     console.log("의사 추가 완료:", doctorAddress);

@@ -180,36 +180,41 @@ const RecoveryRequest = ({ currentAccount, onRecoveryComplete }) => {
         if (!guardians) return null;
 
         return (
-            <Paper sx={{ p: 2, mb: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                    등록된 보호자 목록
-                </Typography>
-                <List>
-                    {guardians.addresses.map((address, index) => (
-                        <React.Fragment key={index}>
-                            <ListItem>
-                                <ListItemIcon>
-                                    <Person color="primary" />
-                                </ListItemIcon>
-                                <ListItemText
-                                    primary={guardians.names[index]}
-                                    secondary={
-                                        <React.Fragment>
-                                            <Typography variant="body2" color="text.secondary" component="span" display="block">
-                                                지갑: {address}
-                                            </Typography>
-                                            <Typography variant="body2" color="text.secondary" component="span" display="block">
-                                                연락처: {guardians.contacts[index]}
-                                            </Typography>
-                                        </React.Fragment>
-                                    }
-                                />
-                            </ListItem>
-                            {index < guardians.addresses.length - 1 && <Divider />}
-                        </React.Fragment>
-                    ))}
-                </List>
-            </Paper>
+            <Card elevation={0} sx={{ height: '100%', border: '2px solid #CBD5E1', borderRadius: '12px' }}>
+                <CardContent sx={{ p: 3 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2.5 }}>
+                        <Person sx={{ color: '#0891B2', fontSize: 20 }} />
+                        <Typography variant="h6" sx={{ fontWeight: 600, color: '#0F172A' }}>
+                            등록된 보호자 목록
+                        </Typography>
+                    </Box>
+                    <Divider sx={{ mb: 2.5, borderColor: '#CBD5E1' }} />
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                        {guardians.addresses.map((address, index) => (
+                            <Paper
+                                key={index}
+                                elevation={0}
+                                sx={{
+                                    p: 2,
+                                    border: '1px solid #CBD5E1',
+                                    borderRadius: '8px',
+                                    backgroundColor: '#FAFBFC',
+                                }}
+                            >
+                                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#0F172A', mb: 1 }}>
+                                    {guardians.names[index]}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: '#475569', display: 'block', mb: 0.5, fontSize: '0.75rem' }}>
+                                    지갑: {address}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: '#475569', display: 'block', fontSize: '0.75rem' }}>
+                                    연락처: {guardians.contacts[index]}
+                                </Typography>
+                            </Paper>
+                        ))}
+                    </Box>
+                </CardContent>
+            </Card>
         );
     };
 
@@ -222,79 +227,168 @@ const RecoveryRequest = ({ currentAccount, onRecoveryComplete }) => {
         const isCancelled = recoveryStatus.isCancelled;
 
         return (
-            <Card sx={{ mb: 3 }}>
-                <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <Security color="primary" sx={{ mr: 1 }} />
-                        <Typography variant="h6">
-                            키 복구 진행 상황
-                        </Typography>
-                        <Box sx={{ ml: 'auto' }}>
-                            {isCompleted && <Chip label="완료" color="success" />}
-                            {isCancelled && <Chip label="취소됨" color="default" />}
-                            {isExpired && !isCompleted && !isCancelled && <Chip label="만료됨" color="error" />}
-                            {!isExpired && !isCompleted && !isCancelled && <Chip label="진행중" color="primary" />}
+            <Card elevation={0} sx={{ height: '100%', border: '2px solid #CBD5E1', borderRadius: '12px' }}>
+                <CardContent sx={{ p: 3 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <Security sx={{ color: '#0891B2', fontSize: 20 }} />
+                            <Typography variant="h6" sx={{ fontWeight: 600, color: '#0F172A' }}>
+                                키 복구 진행 상황
+                            </Typography>
+                        </Box>
+                        <Box>
+                            {isCompleted && <Chip label="완료" size="small" sx={{ backgroundColor: '#D1FAE5', color: '#059669', fontWeight: 600, fontSize: '0.75rem' }} />}
+                            {isCancelled && <Chip label="취소됨" size="small" sx={{ backgroundColor: '#F3F4F6', color: '#475569', fontWeight: 600, fontSize: '0.75rem' }} />}
+                            {isExpired && !isCompleted && !isCancelled && <Chip label="만료됨" size="small" sx={{ backgroundColor: '#FEE2E2', color: '#DC2626', fontWeight: 600, fontSize: '0.75rem' }} />}
+                            {!isExpired && !isCompleted && !isCancelled && <Chip label="진행중" size="small" sx={{ backgroundColor: '#E0F2FE', color: '#0891B2', fontWeight: 600, fontSize: '0.75rem' }} />}
                         </Box>
                     </Box>
 
-                    <Grid container spacing={2} sx={{ mb: 3 }}>
-                        <Grid item xs={12} md={6}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                                <CheckCircle color={getIconColor(recoveryStatus.approvalCount)} sx={{ mr: 1 }} />
-                                <Typography variant="body1">
+                    <Divider sx={{ mb: 2.5, borderColor: '#CBD5E1' }} />
+
+                    <Box sx={{ mb: 2.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <CheckCircle sx={{ color: recoveryStatus.approvalCount >= 2 ? '#059669' : recoveryStatus.approvalCount >= 1 ? '#D97706' : '#64748B', fontSize: 20 }} />
+                                <Typography variant="body1" sx={{ fontWeight: 600, color: '#0F172A', fontSize: '0.9375rem' }}>
                                     승인 진행률: {recoveryStatus.approvalCount}/2
                                 </Typography>
                             </Box>
-                            <LinearProgress 
-                                variant="determinate" 
-                                value={progressValue} 
-                                color={getStatusColor(recoveryStatus.approvalCount)}
-                                sx={{ height: 8, borderRadius: 4 }}
-                            />
-                        </Grid>
-                        
-                        <Grid item xs={12} md={6}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                                <Schedule color={isExpired ? 'error' : 'primary'} sx={{ mr: 1 }} />
-                                <Typography variant="body1">
-                                    {isExpired ? '만료됨' : `남은 시간: ${formatTime(timeRemaining)}`}
-                                </Typography>
-                            </Box>
-                        </Grid>
-                    </Grid>
+                        </Box>
+                        <LinearProgress 
+                            variant="determinate" 
+                            value={progressValue} 
+                            color={getStatusColor(recoveryStatus.approvalCount)}
+                            sx={{ height: 8, borderRadius: 4 }}
+                        />
+                    </Box>
+
+                    <Box sx={{ mb: 2.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Schedule sx={{ color: isExpired ? '#DC2626' : '#0891B2', fontSize: 20 }} />
+                            <Typography variant="body1" sx={{ fontWeight: 500, color: '#0F172A', fontSize: '0.9375rem' }}>
+                                {isExpired ? '만료됨' : `남은 시간: ${formatTime(timeRemaining)}`}
+                            </Typography>
+                        </Box>
+                    </Box>
 
                     <Alert 
                         severity={recoveryStatus.approvalCount >= 2 ? 'success' : 'info'} 
-                        sx={{ mb: 2 }}
+                        sx={{ mb: 2.5, borderRadius: '8px' }}
                     >
-                        {recoveryStatus.approvalCount >= 2 
-                            ? '✅ 충분한 승인을 받았습니다! 이제 새 키를 생성하여 복구를 완료할 수 있습니다.'
-                            : '📞 보호자들에게 연락하여 Zkare 사이트에서 승인을 요청하세요.'
-                        }
+                        <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                            {recoveryStatus.approvalCount >= 2 
+                                ? '충분한 승인을 받았습니다! 이제 새 키를 생성하여 복구를 완료할 수 있습니다.'
+                                : '보호자들에게 연락하여 Zkare 사이트에서 승인을 요청하세요.'
+                            }
+                        </Typography>
                     </Alert>
 
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                        요청 ID: {activeRequest}
-                    </Typography>
+                    <Paper elevation={0} sx={{ p: 2, mb: 2.5, backgroundColor: '#FAFBFC', border: '1px solid #CBD5E1', borderRadius: '8px' }}>
+                        <Typography variant="caption" sx={{ color: '#475569', fontWeight: 600, fontSize: '0.75rem', display: 'block', mb: 0.5 }}>
+                            요청 ID
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace', color: '#0F172A', fontSize: '0.75rem', wordBreak: 'break-all' }}>
+                            {activeRequest}
+                        </Typography>
+                    </Paper>
 
-                    <Box sx={{ mt: 2 }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                         {recoveryStatus.approvalCount >= 2 && !isCompleted && !isCancelled && !isExpired && (
                             <Button
                                 variant="contained"
-                                color="success"
+                                fullWidth
                                 onClick={() => onRecoveryComplete && onRecoveryComplete(activeRequest)}
-                                sx={{ mr: 1 }}
+                                sx={{
+                                    borderRadius: '8px',
+                                    background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                                    fontWeight: 600,
+                                    py: 1.5,
+                                    textTransform: 'none',
+                                    boxShadow: '0 2px 8px rgba(5, 150, 105, 0.3)',
+                                    '&:hover': {
+                                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                                        boxShadow: '0 4px 12px rgba(5, 150, 105, 0.4)',
+                                    },
+                                }}
                             >
                                 새 키 생성하여 복구 완료
                             </Button>
                         )}
                         
-                        {!isCompleted && !isCancelled && (
+                        {isExpired && !isCompleted && !isCancelled && (
+                            <>
+                                <Alert severity="warning" sx={{ mb: 2, borderRadius: '8px' }}>
+                                    <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                                        복구 요청이 만료되었습니다. 다시 신청해주세요.
+                                    </Typography>
+                                </Alert>
+                                <Button
+                                    variant="contained"
+                                    fullWidth
+                                    onClick={async () => {
+                                        // 먼저 취소하고
+                                        await handleCancelRecovery();
+                                        // 그 다음 새로 신청
+                                        await handleRequestRecovery();
+                                    }}
+                                    disabled={loading}
+                                    sx={{
+                                        borderRadius: '8px',
+                                        background: 'linear-gradient(135deg, #0891B2 0%, #0E7490 100%)',
+                                        fontWeight: 600,
+                                        py: 1.5,
+                                        textTransform: 'none',
+                                        boxShadow: '0 2px 8px rgba(8, 145, 178, 0.3)',
+                                        '&:hover': {
+                                            background: 'linear-gradient(135deg, #0891B2 0%, #0E7490 100%)',
+                                            boxShadow: '0 4px 12px rgba(8, 145, 178, 0.4)',
+                                        },
+                                    }}
+                                >
+                                    {loading ? '처리 중...' : '다시 신청하기'}
+                                </Button>
+                                <Button
+                                    variant="outlined"
+                                    fullWidth
+                                    onClick={handleCancelRecovery}
+                                    disabled={loading}
+                                    sx={{
+                                        borderRadius: '8px',
+                                        borderColor: '#DC2626',
+                                        color: '#DC2626',
+                                        fontWeight: 600,
+                                        py: 1.5,
+                                        textTransform: 'none',
+                                        '&:hover': {
+                                            borderColor: '#DC2626',
+                                            backgroundColor: '#FEE2E2',
+                                        },
+                                    }}
+                                >
+                                    복구 요청 취소
+                                </Button>
+                            </>
+                        )}
+                        
+                        {!isExpired && !isCompleted && !isCancelled && (
                             <Button
                                 variant="outlined"
-                                color="error"
+                                fullWidth
                                 onClick={handleCancelRecovery}
                                 disabled={loading}
+                                sx={{
+                                    borderRadius: '8px',
+                                    borderColor: '#DC2626',
+                                    color: '#DC2626',
+                                    fontWeight: 600,
+                                    py: 1.5,
+                                    textTransform: 'none',
+                                    '&:hover': {
+                                        borderColor: '#DC2626',
+                                        backgroundColor: '#FEE2E2',
+                                    },
+                                }}
                             >
                                 복구 요청 취소
                             </Button>
@@ -416,24 +510,33 @@ const RecoveryRequest = ({ currentAccount, onRecoveryComplete }) => {
     }
 
     return (
-        <Box sx={{ maxWidth: 800, mx: 'auto', p: 3 }}>
-            <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                <Security color="primary" sx={{ mr: 2 }} />
-                키 복구 시스템
-            </Typography>
+        <Box>
+            {activeRequest && recoveryStatus ? (
+                <Grid container spacing={3} sx={{ mb: 3 }}>
+                    <Grid item xs={12} md={5}>
+                        {renderGuardianList()}
+                    </Grid>
+                    <Grid item xs={12} md={7}>
+                        {renderActiveRequest()}
+                    </Grid>
+                </Grid>
+            ) : (
+                <>
+                    {renderGuardianList()}
+                    <Box sx={{ mb: 3 }} />
+                </>
+            )}
 
-            {renderGuardianList()}
-            {renderActiveRequest()}
             {renderRequestForm()}
 
             {error && (
-                <Alert severity="error" sx={{ mt: 2 }}>
+                <Alert severity="error" sx={{ mt: 2, borderRadius: '8px' }}>
                     {error}
                 </Alert>
             )}
             
             {success && (
-                <Alert severity="success" sx={{ mt: 2 }}>
+                <Alert severity="success" sx={{ mt: 2, borderRadius: '8px' }}>
                     {success}
                 </Alert>
             )}

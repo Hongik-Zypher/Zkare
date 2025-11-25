@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { generateKeyPair } from '../utils/encryption';
 import { isDoctor, getKeyRegistryContract, isPublicKeyRegistered, getPublicKey, setGuardiansWithShares } from '../utils/contracts';
 import { encryptAndSplitKey, encryptShareForGuardian } from '../utils/secretSharing';
+import { COLORS } from '../utils/constants';
 
 const KeyGeneration = ({ currentAccount, onKeyRegistered }) => {
     const [loading, setLoading] = useState(false);
@@ -435,13 +436,22 @@ const KeyGeneration = ({ currentAccount, onKeyRegistered }) => {
                 disabled={loading || !userRole}
                 sx={{
                     mt: 2,
-                    backgroundColor: '#2E7D32',
+                    width: '160px',
+                    height: '44px',
+                    backgroundColor: COLORS.primary,
+                    color: 'white',
+                    fontWeight: 600,
+                    borderRadius: '8px',
                     '&:hover': {
-                        backgroundColor: '#1b5e20',
+                        backgroundColor: COLORS.primaryHover,
+                    },
+                    '&:disabled': {
+                        backgroundColor: COLORS.border,
+                        color: COLORS.textSecondary,
                     }
                 }}
             >
-                {loading ? <CircularProgress size={24} /> : '키 생성하기'}
+                {loading ? <CircularProgress size={24} color="inherit" /> : '키 생성'}
             </Button>
         </Box>
         );
